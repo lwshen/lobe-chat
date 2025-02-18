@@ -6,13 +6,18 @@ on:
     types: [published]
   pull_request:
     types: [synchronize, labeled, unlabeled]
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: ['Upstream Sync']
+    types: [completed]
 
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
   cancel-in-progress: true
 
 env:
-  REGISTRY_IMAGE: lobehub/lobe-chat-pglite
+  REGISTRY_IMAGE: ghcr.io/lwshen/lobe-chat-pglite
   PR_TAG_PREFIX: pr-
 
 jobs:
