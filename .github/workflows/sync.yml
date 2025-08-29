@@ -7,7 +7,7 @@ permissions:
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # every 6 hours
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -34,6 +34,18 @@ jobs:
           target_sync_branch: main
           target_repo_token: ${{ secrets.GITHUB_TOKEN }} # automatically generated, no need to set
           test_mode: false
+
+      - name: Run follow-up workflows
+        if: steps.sync.outputs.has_new_commits == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/${{github.repository_owner}}/${{github.event.repository.name}}/dispatches \
+            -f "event_type=new-commit"
 
       - name: Sync check
         if: failure()
