@@ -38,7 +38,7 @@ jobs:
           test_mode: false
 
       - name: Run follow-up workflows
-        if: steps.sync.outputs.has_new_commits == 'true'
+        # if: steps.sync.outputs.has_new_commits == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -47,7 +47,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             /repos/${{github.repository_owner}}/${{github.event.repository.name}}/dispatches \
-            -f "event_type=new-commit"
+            -f "event_type=new-commit-next"
 
       - name: Sync check
         if: failure()
