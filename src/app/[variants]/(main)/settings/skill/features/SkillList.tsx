@@ -10,9 +10,11 @@ import {
   getKlavisServerByServerIdentifier,
   getLobehubSkillProviderById,
 } from '@lobechat/const';
+import { Center, Empty } from '@lobehub/ui';
 import { Divider } from 'antd';
 import { createStaticStyles } from 'antd-style';
 import isEqual from 'fast-deep-equal';
+import { BlocksIcon } from 'lucide-react';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -29,9 +31,9 @@ import { KlavisServerStatus } from '@/store/tool/slices/klavisStore';
 import { LobehubSkillStatus } from '@/store/tool/slices/lobehubSkillStore/types';
 import { type LobeToolType } from '@/types/tool/tool';
 
-import McpSkillItem from './McpSkillItem';
 import KlavisSkillItem from './KlavisSkillItem';
 import LobehubSkillItem from './LobehubSkillItem';
+import McpSkillItem from './McpSkillItem';
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
   container: css`
@@ -89,6 +91,9 @@ const SkillList = memo(() => {
 
     // If RECOMMENDED_SKILLS is configured, use it to build the list
     if (RECOMMENDED_SKILLS.length > 0) {
+      const addedLobehubIds = new Set<string>();
+      const addedKlavisIds = new Set<string>();
+
       for (const skill of RECOMMENDED_SKILLS) {
         if (skill.type === RecommendedSkillType.Lobehub && isLobehubSkillEnabled) {
           const provider = getLobehubSkillProviderById(skill.id);
@@ -99,6 +104,37 @@ const SkillList = memo(() => {
           const serverType = getKlavisServerByServerIdentifier(skill.id);
           if (serverType) {
             integrationItems.push({ serverType, type: 'klavis' });
+            addedKlavisIds.add(skill.id);
+          }
+        }
+      }
+
+      // Also add connected Lobehub skills that are not in RECOMMENDED_SKILLS
+      if (isLobehubSkillEnabled) {
+        for (const server of allLobehubSkillServers) {
+          if (
+            server.status === LobehubSkillStatus.CONNECTED &&
+            !addedLobehubIds.has(server.identifier)
+          ) {
+            const provider = getLobehubSkillProviderById(server.identifier);
+            if (provider) {
+              integrationItems.push({ provider, type: 'lobehub' });
+            }
+          }
+        }
+      }
+
+      // Also add connected Klavis skills that are not in RECOMMENDED_SKILLS
+      if (isKlavisEnabled) {
+        for (const server of allKlavisServers) {
+          if (
+            server.status === KlavisServerStatus.CONNECTED &&
+            !addedKlavisIds.has(server.identifier)
+          ) {
+            const serverType = getKlavisServerByServerIdentifier(server.identifier);
+            if (serverType) {
+              integrationItems.push({ serverType, type: 'klavis' });
+            }
           }
         }
       }
@@ -168,11 +204,10 @@ const SkillList = memo(() => {
 
   if (!hasAnySkills) {
     return (
-      <div className={styles.container}>
-        <p className={styles.description}>{t('tab.skillDesc')}</p>
-        <div className={styles.empty}>{t('tab.skillEmpty')}</div>
+      <Center className={styles.container} paddingBlock={48}>
+        <Empty description={t('tab.skillDesc')} icon={BlocksIcon} title={t('tab.skillEmpty')} />
         <AddSkillButton />
-      </div>
+      </Center>
     );
   }
 

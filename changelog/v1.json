@@ -1,6 +1,137 @@
 [
   {
     "children": {
+      "fixes": ["Broadcast tools calling and improve auto scroll."]
+    },
+    "date": "2026-01-25",
+    "version": "2.0.0-next.375"
+  },
+  {
+    "children": {
+      "features": ["Update the discover page sort, add haveSkill、mostUsage params."],
+      "improvements": ["Update share action bar."]
+    },
+    "date": "2026-01-25",
+    "version": "2.0.0-next.374"
+  },
+  {
+    "children": {
+      "fixes": ["Slove group member plugin is lost & not use the plugins."]
+    },
+    "date": "2026-01-25",
+    "version": "2.0.0-next.373"
+  },
+  {
+    "children": {},
+    "date": "2026-01-25",
+    "version": "2.0.0-next.372"
+  },
+  {
+    "children": {},
+    "date": "2026-01-25",
+    "version": "2.0.0-next.371"
+  },
+  {
+    "children": {
+      "features": ["Support history context auto compress."]
+    },
+    "date": "2026-01-25",
+    "version": "2.0.0-next.370"
+  },
+  {
+    "children": {
+      "features": ["Add the agent/group profiles page the states and forked by tag."]
+    },
+    "date": "2026-01-24",
+    "version": "2.0.0-next.369"
+  },
+  {
+    "children": {
+      "features": ["Optimize profile editor."]
+    },
+    "date": "2026-01-24",
+    "version": "2.0.0-next.368"
+  },
+  {
+    "children": {
+      "fixes": ["Add cron pages enables change should reload the state."]
+    },
+    "date": "2026-01-24",
+    "version": "2.0.0-next.367"
+  },
+  {
+    "children": {
+      "fixes": ["Prevent recently viewed items from shrinking."]
+    },
+    "date": "2026-01-24",
+    "version": "2.0.0-next.366"
+  },
+  {
+    "children": {
+      "fixes": ["Docker deploy REDIS_URL check, fix sub task issue."]
+    },
+    "date": "2026-01-24",
+    "version": "2.0.0-next.365"
+  },
+  {
+    "children": {
+      "fixes": ["Fixed when windows withd low the protal will resize."]
+    },
+    "date": "2026-01-24",
+    "version": "2.0.0-next.364"
+  },
+  {
+    "children": {},
+    "date": "2026-01-24",
+    "version": "2.0.0-next.363"
+  },
+  {
+    "children": {
+      "fixes": ["Fix page selection not display correctly."]
+    },
+    "date": "2026-01-24",
+    "version": "2.0.0-next.362"
+  },
+  {
+    "children": {},
+    "date": "2026-01-24",
+    "version": "2.0.0-next.361"
+  },
+  {
+    "children": {
+      "fixes": ["Login success callback url error."]
+    },
+    "date": "2026-01-24",
+    "version": "2.0.0-next.360"
+  },
+  {
+    "children": {
+      "fixes": ["Surface streaming errors during mid-stream pulls."]
+    },
+    "date": "2026-01-24",
+    "version": "2.0.0-next.359"
+  },
+  {
+    "children": {},
+    "date": "2026-01-23",
+    "version": "2.0.0-next.358"
+  },
+  {
+    "children": {
+      "fixes": ["Page content switch mismatch."]
+    },
+    "date": "2026-01-23",
+    "version": "2.0.0-next.357"
+  },
+  {
+    "children": {
+      "features": ["Remove NextAuth."]
+    },
+    "date": "2026-01-23",
+    "version": "2.0.0-next.356"
+  },
+  {
+    "children": {
       "fixes": ["Fix favorite refresh bug and group topic refresh issue."]
     },
     "date": "2026-01-23",

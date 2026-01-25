@@ -6,6 +6,7 @@ import type {
 import type { LayersEnum, MemorySourceType } from '@lobechat/types';
 
 import type {
+  ActivityExtractor,
   ContextExtractor,
   ExperienceExtractor,
   IdentityExtractor,
@@ -14,6 +15,7 @@ import type {
 
 export type MemoryExtractionAgent =
   | 'gatekeeper'
+  | 'layer-activity'
   | 'layer-context'
   | 'layer-experience'
   | 'layer-identity'
@@ -110,7 +112,7 @@ export interface MemoryContextProvider<
   P extends Record<string, unknown> = Record<string, unknown>,
   R extends Record<string, unknown> = Record<string, unknown>,
 > {
-  buildContext(job: MemoryExtractionJob, options?: P): Promise<BuiltContext<R>>;
+  buildContext(userId: string, sourceId: string, options?: P): Promise<BuiltContext<R>>;
 }
 
 export interface MemoryResultRecorder<T = Record<string, unknown>> {
@@ -124,6 +126,10 @@ export interface PersistedMemoryResult {
 }
 
 export type MemoryExtractionLayerOutputs = Partial<{
+  activity: {
+    data?: Awaited<ReturnType<ActivityExtractor['structuredCall']>>;
+    error?: unknown;
+  };
   context: {
     data?: Awaited<ReturnType<ContextExtractor['structuredCall']>>;
     error?: unknown;
@@ -143,6 +149,7 @@ export type MemoryExtractionLayerOutputs = Partial<{
 }>;
 
 export interface GatekeeperDecision {
+  activity: MemoryLayerDecision;
   context: MemoryLayerDecision;
   experience: MemoryLayerDecision;
   identity: MemoryLayerDecision;

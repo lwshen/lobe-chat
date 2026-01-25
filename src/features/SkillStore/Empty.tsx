@@ -1,7 +1,9 @@
 import { Center, Empty as EmptyComponent, type EmptyProps } from '@lobehub/ui';
-import { Plug2 } from 'lucide-react';
+import { BlocksIcon } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import AddSkillButton from './AddSkillButton';
 
 interface SkillEmptyProps extends Omit<EmptyProps, 'icon'> {
   search?: boolean;
@@ -13,11 +15,12 @@ const Empty = memo<SkillEmptyProps>(({ search, ...rest }) => {
   return (
     <Center height="100%" style={{ minHeight: '50vh' }} width="100%">
       <EmptyComponent
+        action={!search && <AddSkillButton />}
         description={search ? t('skillStore.emptySearch') : t('skillStore.empty')}
         descriptionProps={{
           fontSize: 14,
         }}
-        icon={Plug2}
+        icon={BlocksIcon}
         style={{
           maxWidth: 400,
         }}
