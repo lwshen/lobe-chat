@@ -7,9 +7,9 @@ on:
   release:
     types: [published]
   push:
-    branches: [ next ]
+    branches: [ main ]
   repository_dispatch:
-    types: [ new-commit-next ]
+    types: [ new-commit ]
 
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}

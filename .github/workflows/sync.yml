@@ -45,7 +45,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             /repos/${{github.repository_owner}}/${{github.event.repository.name}}/dispatches \
-            -f "event_type=new-commit-next"
+            -f "event_type=new-commit"
 
       - name: Sync check
         if: failure()
