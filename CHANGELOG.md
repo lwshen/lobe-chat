@@ -2,6 +2,165 @@
 
 # Changelog
 
+### [Version 2.1.8](https://github.com/lobehub/lobe-chat/compare/v2.1.7...v2.1.8)
+
+<sup>Released on **2026-02-01**</sup>
+
+#### 💄 Styles
+
+- **misc**: Improve tasks display.
+
+<br/>
+
+<details>
+<summary><kbd>Improvements and Fixes</kbd></summary>
+
+#### Styles
+
+- **misc**: Improve tasks display, closes [#12032](https://github.com/lobehub/lobe-chat/issues/12032) ([3423ad1](https://github.com/lobehub/lobe-chat/commit/3423ad1))
+
+</details>
+
+<div align="right">
+
+[![](https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square)](#readme-top)
+
+</div>
+
+### [Version 2.1.7](https://github.com/lobehub/lobe-chat/compare/v2.1.6...v2.1.7)
+
+<sup>Released on **2026-02-01**</sup>
+
+#### 🐛 Bug Fixes
+
+- **misc**: Add missing description parameter docs in Notebook system prompt.
+
+<br/>
+
+<details>
+<summary><kbd>Improvements and Fixes</kbd></summary>
+
+#### What's fixed
+
+- **misc**: Add missing description parameter docs in Notebook system prompt, closes [#12015](https://github.com/lobehub/lobe-chat/issues/12015) [#11391](https://github.com/lobehub/lobe-chat/issues/11391) ([182030f](https://github.com/lobehub/lobe-chat/commit/182030f))
+
+</details>
+
+<div align="right">
+
+[![](https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square)](#readme-top)
+
+</div>
+
+### [Version 2.1.6](https://github.com/lobehub/lobe-chat/compare/v2.1.5...v2.1.6)
+
+<sup>Released on **2026-02-01**</sup>
+
+#### 💄 Styles
+
+- **misc**: Improve local-system tool implement.
+
+<br/>
+
+<details>
+<summary><kbd>Improvements and Fixes</kbd></summary>
+
+#### Styles
+
+- **misc**: Improve local-system tool implement, closes [#12022](https://github.com/lobehub/lobe-chat/issues/12022) ([5e203b8](https://github.com/lobehub/lobe-chat/commit/5e203b8))
+
+</details>
+
+<div align="right">
+
+[![](https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square)](#readme-top)
+
+</div>
+
+### [Version 2.1.5](https://github.com/lobehub/lobe-chat/compare/v2.1.4...v2.1.5)
+
+<sup>Released on **2026-01-31**</sup>
+
+#### 🐛 Bug Fixes
+
+- **misc**: Slove the group member agents cant set skills problem.
+
+<br/>
+
+<details>
+<summary><kbd>Improvements and Fixes</kbd></summary>
+
+#### What's fixed
+
+- **misc**: Slove the group member agents cant set skills problem, closes [#12021](https://github.com/lobehub/lobe-chat/issues/12021) ([2302940](https://github.com/lobehub/lobe-chat/commit/2302940))
+
+</details>
+
+<div align="right">
+
+[![](https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square)](#readme-top)
+
+</div>
+
+### [Version 2.1.4](https://github.com/lobehub/lobe-chat/compare/v2.1.3...v2.1.4)
+
+<sup>Released on **2026-01-31**</sup>
+
+#### 🐛 Bug Fixes
+
+- **stream**: Update event handling to use 'text' instead of 'content_part' in gemini 2.5 models.
+
+#### 💄 Styles
+
+- **misc**: Update i18n, Update Kimi K2.5 & Qwen3 Max Thinking models.
+
+<br/>
+
+<details>
+<summary><kbd>Improvements and Fixes</kbd></summary>
+
+#### What's fixed
+
+- **stream**: Update event handling to use 'text' instead of 'content_part' in gemini 2.5 models, closes [#11235](https://github.com/lobehub/lobe-chat/issues/11235) ([a76a630](https://github.com/lobehub/lobe-chat/commit/a76a630))
+
+#### Styles
+
+- **misc**: Update i18n, closes [#11920](https://github.com/lobehub/lobe-chat/issues/11920) ([1a590a0](https://github.com/lobehub/lobe-chat/commit/1a590a0))
+- **misc**: Update Kimi K2.5 & Qwen3 Max Thinking models, closes [#11925](https://github.com/lobehub/lobe-chat/issues/11925) ([6f9e010](https://github.com/lobehub/lobe-chat/commit/6f9e010))
+
+</details>
+
+<div align="right">
+
+[![](https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square)](#readme-top)
+
+</div>
+
+### [Version 2.1.3](https://github.com/lobehub/lobe-chat/compare/v2.1.2...v2.1.3)
+
+<sup>Released on **2026-01-31**</sup>
+
+#### 🐛 Bug Fixes
+
+- **auth**: Add AUTH_DISABLE_EMAIL_PASSWORD env to enable SSO-only mode.
+
+<br/>
+
+<details>
+<summary><kbd>Improvements and Fixes</kbd></summary>
+
+#### What's fixed
+
+- **auth**: Add AUTH_DISABLE_EMAIL_PASSWORD env to enable SSO-only mode, closes [#12009](https://github.com/lobehub/lobe-chat/issues/12009) ([f3210a3](https://github.com/lobehub/lobe-chat/commit/f3210a3))
+
+</details>
+
+<div align="right">
+
+[![](https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square)](#readme-top)
+
+</div>
+
 ### [Version 2.1.2](https://github.com/lobehub/lobe-chat/compare/v2.1.1...v2.1.2)
 
 <sup>Released on **2026-01-30**</sup>
