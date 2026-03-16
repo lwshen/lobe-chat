@@ -2,6 +2,33 @@
 
 # Changelog
 
+### [Version 2.1.43](https://github.com/lobehub/lobe-chat/compare/v2.1.42...v2.1.43)
+
+<sup>Released on **2026-03-16**</sup>
+
+#### 👷 Build System
+
+- **misc**: add BM25 indexes with ICU tokenizer for search optimization.
+- **misc**: add `agent_documents` table.
+
+<br/>
+
+<details>
+<summary><kbd>Improvements and Fixes</kbd></summary>
+
+#### Build System
+
+- **misc**: add BM25 indexes with ICU tokenizer for search optimization, closes [#13032](https://github.com/lobehub/lobe-chat/issues/13032) ([70a74f4](https://github.com/lobehub/lobe-chat/commit/70a74f4))
+- **misc**: add `agent_documents` table, closes [#12944](https://github.com/lobehub/lobe-chat/issues/12944) ([93ee1e3](https://github.com/lobehub/lobe-chat/commit/93ee1e3))
+
+</details>
+
+<div align="right">
+
+[![](https://img.shields.io/badge/-BACK_TO_TOP-151515?style=flat-square)](#readme-top)
+
+</div>
+
 ### [Version 2.1.42](https://github.com/lobehub/lobe-chat/compare/v2.1.41...v2.1.42)
 
 <sup>Released on **2026-03-14**</sup>
