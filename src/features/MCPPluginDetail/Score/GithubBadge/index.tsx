@@ -25,7 +25,7 @@ const GithubBadge = memo(() => {
 
   const badgeFullUrl = urlJoin(OFFICIAL_SITE, 'badge/mcp-full', identifier);
 
-  // 构建带主题参数的完整 badge URL
+  // Build the full badge URL with theme parameter
   const styledBadgeFullUrl =
     selectedTheme === 'dark' ? badgeFullUrl : `${badgeFullUrl}?theme=${selectedTheme}`;
 
@@ -58,7 +58,7 @@ const GithubBadge = memo(() => {
       <Snippet language={'md'} style={{ fontSize: 12 }} variant={'outlined'}>
         {badgeLite}
       </Snippet>
-      { }
+      {}
       <img
         alt="MCP Badge"
         height={selectedStyle === 'for-the-badge' ? 28 : 20}
@@ -74,7 +74,7 @@ const GithubBadge = memo(() => {
       <Snippet language={'md'} style={{ fontSize: 12 }} variant={'outlined'}>
         {badge}
       </Snippet>
-      { }
+      {}
       <img alt="MCP Badge" src={styledBadgeFullUrl} />
     </>
   );
