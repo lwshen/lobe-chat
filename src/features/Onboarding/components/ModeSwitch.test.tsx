@@ -87,8 +87,15 @@ afterEach(() => {
 const TEST_TIMEOUT_MS = 15_000;
 
 describe('ModeSwitch', () => {
+<<<<<<< HEAD
   it('renders both onboarding variants when agent onboarding is enabled', () => {
     renderModeSwitch({ enabled: true, showLabel: true });
+=======
+  it(
+    'renders both onboarding variants when agent onboarding is enabled',
+    async () => {
+      await renderModeSwitch({ enabled: true, showLabel: true });
+>>>>>>> origin/main
 
       expect(screen.getByText('Choose your onboarding mode')).toBeInTheDocument();
       expect(screen.getByRole('radio', { name: 'Conversational' })).toBeChecked();
@@ -97,6 +104,7 @@ describe('ModeSwitch', () => {
     TEST_TIMEOUT_MS,
   );
 
+<<<<<<< HEAD
   it('hides the onboarding switch entirely when agent onboarding is disabled', () => {
     renderModeSwitch({ enabled: false });
 
@@ -113,6 +121,19 @@ describe('ModeSwitch', () => {
     expect(screen.queryByRole('radio', { name: 'Conversational' })).not.toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: 'Classic' })).not.toBeInTheDocument();
   });
+=======
+  it(
+    'hides the onboarding switch entirely when agent onboarding is disabled',
+    async () => {
+      await renderModeSwitch({ enabled: false });
+
+      expect(screen.queryByRole('radio', { name: 'Conversational' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('radio', { name: 'Classic' })).not.toBeInTheDocument();
+      expect(screen.queryByText('Choose your onboarding mode')).not.toBeInTheDocument();
+    },
+    TEST_TIMEOUT_MS,
+  );
+>>>>>>> origin/main
 
   it('keeps action buttons visible when agent onboarding is disabled', () => {
     renderModeSwitch({
