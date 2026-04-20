@@ -2,8 +2,6 @@
 
 # Changelog
 
-<<<<<<< HEAD
-=======
 ## [Version 2.1.51](https://github.com/lobehub/lobe-chat/compare/v0.0.0-nightly.pr13850.8503...v2.1.51)
 
 <sup>Released on **2026-04-16**</sup>
@@ -53,7 +51,6 @@
 
 </div>
 
->>>>>>> origin/main
 ## [Version 2.1.50](https://github.com/lobehub/lobe-chat/compare/v2.1.49...v2.1.50)
 
 <sup>Released on **2026-04-16**</sup>

@@ -1,13 +1,6 @@
 [
   {
-    "children": {},
-    "date": "2026-04-16",
-    "version": "2.1.50"
-  },
-  {
     "children": {
-<<<<<<< HEAD
-=======
       "fixes": ["fix minify cli.", "recent delete."]
     },
     "date": "2026-04-16",
@@ -20,7 +13,6 @@
   },
   {
     "children": {
->>>>>>> origin/main
       "improvements": ["add agent task system database schema."]
     },
     "date": "2026-03-26",
