@@ -1,41 +1,46 @@
 import { Flexbox } from '@lobehub/ui';
+import { cssVar } from 'antd-style';
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
 import { useSessionStore } from '@/store/session';
 import { sessionSelectors } from '@/store/session/selectors';
 
+import FolderTag from './FolderTag';
 import MemberCountTag from './MemberCountTag';
 
 const TitleTags = memo(() => {
+  const { t } = useTranslation('topic');
   const topicTitle = useChatStore((s) => topicSelectors.currentActiveTopic(s)?.title);
   const isGroupSession = useSessionStore(sessionSelectors.isCurrentSessionGroupSession);
 
   if (isGroupSession) {
     return (
-      <Flexbox horizontal align={'center'} gap={12}>
+      <Flexbox allowShrink horizontal align={'center'} gap={12} style={{ minWidth: 0 }}>
         <MemberCountTag />
       </Flexbox>
     );
   }
 
-  if (!topicTitle) return null;
-
   return (
-    <Flexbox horizontal align={'center'} gap={4}>
+    <Flexbox allowShrink horizontal align={'center'} gap={8}>
       <span
         style={{
+          color: cssVar.colorText,
           fontSize: 14,
+          fontWeight: 600,
           marginLeft: 8,
-          opacity: 0.6,
+          minWidth: 0,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
         }}
       >
-        {topicTitle}
+        {topicTitle || t('newTopic')}
       </span>
+      <FolderTag />
     </Flexbox>
   );
 });
