@@ -124,11 +124,14 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, meta
     isInAgentSubRoute,
     isInTopicContextRoute,
     routeTopicId,
+    urlTopicId,
   } = useTopicNavigation();
   const isRouteTopicActive = Boolean(id && routeTopicId === id && isInTopicContextRoute);
   const isTopicActive = Boolean(
     (active || isRouteTopicActive) && !threadId && (!isInAgentSubRoute || isRouteTopicActive),
   );
+
+  const shouldShowThreadList = Boolean(id && id === urlTopicId);
 
   const toggleEditing = useCallback(
     (visible?: boolean) => {
@@ -260,7 +263,7 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, meta
         onDoubleClick={() => void handleDoubleClick()}
       />
       <Editing id={id} title={title} toggleEditing={toggleEditing} />
-      {isTopicActive && (
+      {shouldShowThreadList && (
         <Suspense
           fallback={
             <Flexbox gap={8} paddingBlock={8} paddingInline={24} width={'100%'}>
@@ -269,7 +272,7 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, meta
             </Flexbox>
           }
         >
-          <ThreadList />
+          <ThreadList topicId={id} />
         </Suspense>
       )}
     </Flexbox>
