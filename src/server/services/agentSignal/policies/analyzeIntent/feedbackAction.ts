@@ -110,6 +110,7 @@ const createPlannerProcedureState = (
   const markerReader = options.markerReader ?? options.procedure?.markerReader;
   const procedureState = options.procedure?.procedureState;
 
+<<<<<<< HEAD
   if (procedureState) {
     if (!markerReader) return procedureState;
 
@@ -118,6 +119,37 @@ const createPlannerProcedureState = (
       markers: {
         ...procedureState.markers,
         shouldSuppress: markerReader.shouldSuppress,
+=======
+  if (payload.target === 'memory') {
+    return [
+      {
+        actionId: `${signal.signalId}:action:memory`,
+        actionType: AGENT_SIGNAL_POLICY_ACTION_TYPES.userMemoryHandle,
+        chain: {
+          chainId: signal.chain.chainId,
+          parentNodeId: signal.signalId,
+          parentSignalId: signal.signalId,
+          rootSourceId: signal.chain.rootSourceId,
+        },
+        payload: {
+          agentId: payload.agentId,
+          conflictPolicy: payload.conflictPolicy,
+          evidence: payload.evidence,
+          feedbackHint: payload.satisfactionResult === 'satisfied' ? 'satisfied' : 'not_satisfied',
+          idempotencyKey,
+          message: payload.message,
+          reason: payload.reason,
+          serializedContext,
+          sourceHints: payload.sourceHints,
+          topicId: payload.topicId,
+        },
+        signal: {
+          signalId: signal.signalId,
+          signalType: signal.signalType,
+        },
+        source: signal.source,
+        timestamp: signal.timestamp,
+>>>>>>> origin/main
       },
     };
   }

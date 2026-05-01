@@ -85,13 +85,21 @@ export const useSend = () => {
             await ensureAgentConfigLoaded(activeAgentId);
 
             sendMessage({
+<<<<<<< HEAD
               context: { agentId: activeAgentId, isolatedTopic: true },
+=======
+              context: { agentId: inboxAgentId, isolatedTopic: true },
+>>>>>>> origin/main
               contexts: contextList,
               editorData,
               files: fileList,
               message: inputMessage,
               onTopicCreated: (topicId) => {
+<<<<<<< HEAD
                 router.replace(SESSION_CHAT_TOPIC_URL(activeAgentId, topicId, false));
+=======
+                router.replace(SESSION_CHAT_TOPIC_URL(inboxAgentId, topicId, false));
+>>>>>>> origin/main
               },
             });
 

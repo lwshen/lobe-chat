@@ -2,8 +2,12 @@ import { After, Given, Then, When } from '@cucumber/cucumber';
 import { expect } from '@playwright/test';
 
 import { llmMockManager } from '../../mocks/llm';
+<<<<<<< HEAD
 import type { CustomWorld } from '../../support/world';
 import { WAIT_TIMEOUT } from '../../support/world';
+=======
+import { type CustomWorld, WAIT_TIMEOUT } from '../../support/world';
+>>>>>>> origin/main
 
 const COLD_ROUTE_SCRIPT_DELAY = 2500;
 
@@ -12,6 +16,7 @@ const delay = (ms: number) =>
     setTimeout(resolve, ms);
   });
 
+<<<<<<< HEAD
 const focusHomeChatInput = async (world: CustomWorld): Promise<void> => {
   const candidates = [
     world.page.locator('[data-testid="chat-input"] textarea'),
@@ -36,6 +41,8 @@ const focusHomeChatInput = async (world: CustomWorld): Promise<void> => {
   throw new Error('Could not find a visible Home chat input to focus');
 };
 
+=======
+>>>>>>> origin/main
 Given(
   '用户在冷启动 Home 页面并延迟 Agent 路由加载',
   { timeout: 45_000 },
@@ -81,6 +88,7 @@ Given(
   },
 );
 
+<<<<<<< HEAD
 When(
   '用户在输入框中输入 {string}',
   { timeout: 30_000 },
@@ -94,6 +102,8 @@ When(
   },
 );
 
+=======
+>>>>>>> origin/main
 When('用户按 Enter 从 Home 默认输入发送', { timeout: 45_000 }, async function (this: CustomWorld) {
   console.log('   📍 Step: 启用冷路由延迟并发送默认 Home 消息...');
 
