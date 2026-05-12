@@ -63,7 +63,9 @@ const providersWithDeploymentName = new Set<string>([
   ModelProvider.AzureAI,
   ModelProvider.KimiCodingPlan,
   ModelProvider.Qwen,
+  ModelProvider.Spark,
   ModelProvider.Volcengine,
+  ModelProvider.VolcengineCodingPlan,
 ]);
 interface GetChatCompletionPayload extends Partial<Omit<ChatStreamPayload, 'messages'>> {
   agentId?: string;
@@ -360,7 +362,8 @@ class ChatService {
       ? findDeploymentName(model, provider)
       : undefined;
     const shouldUseDeploymentField =
-      provider === ModelProvider.Azure && responsesAPIModels.has(model);
+      (provider === ModelProvider.Azure && responsesAPIModels.has(model)) ||
+      provider === ModelProvider.Spark;
 
     if (!shouldUseDeploymentField && deploymentName) {
       model = deploymentName;
