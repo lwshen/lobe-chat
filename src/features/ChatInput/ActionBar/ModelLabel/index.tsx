@@ -1,39 +1,42 @@
-import { ModelIcon } from '@lobehub/icons';
-import { Center } from '@lobehub/ui';
+import { Center, Flexbox } from '@lobehub/ui';
 import { createStaticStyles } from 'antd-style';
+import { ChevronDownIcon } from 'lucide-react';
 import { memo, useCallback } from 'react';
 
 import ModelSwitchPanel from '@/features/ModelSwitchPanel';
 import { useAgentStore } from '@/store/agent';
 import { agentByIdSelectors } from '@/store/agent/selectors';
+import { aiModelSelectors, useAiInfraStore } from '@/store/aiInfra';
 
 import { useAgentId } from '../../hooks/useAgentId';
 import { useActionBarContext } from '../context';
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
-  icon: css`
-    transition: scale 400ms cubic-bezier(0.215, 0.61, 0.355, 1);
+  chevron: css`
+    color: ${cssVar.colorTextQuaternary};
   `,
-  model: css`
+  name: css`
+    overflow: hidden;
+
+    max-width: 160px;
+
+    font-size: 12px;
+    color: ${cssVar.colorTextSecondary};
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
+  trigger: css`
     cursor: pointer;
-    border-radius: 24px;
+    border-radius: 6px;
 
     :hover {
-      background: ${cssVar.colorFillSecondary};
-    }
-
-    :active {
-      div {
-        scale: 0.8;
-      }
+      background: ${cssVar.colorFillTertiary};
     }
   `,
 }));
 
-const ModelSwitch = memo(() => {
-  const { actionSize, dropdownPlacement } = useActionBarContext();
-  const blockSize = actionSize?.blockSize ?? 32;
-  const iconSize = actionSize?.size ?? 20;
+const ModelLabel = memo(() => {
+  const { dropdownPlacement } = useActionBarContext();
 
   const agentId = useAgentId();
   const [model, provider, updateAgentConfigById] = useAgentStore((s) => [
@@ -41,6 +44,9 @@ const ModelSwitch = memo(() => {
     agentByIdSelectors.getAgentModelProviderById(agentId)(s),
     s.updateAgentConfigById,
   ]);
+
+  const enabledModel = useAiInfraStore(aiModelSelectors.getEnabledModelById(model, provider));
+  const displayName = enabledModel?.displayName || model;
 
   const handleModelChange = useCallback(
     async (params: { model: string; provider: string }) => {
@@ -52,19 +58,21 @@ const ModelSwitch = memo(() => {
   return (
     <ModelSwitchPanel
       model={model}
+      openOnHover={false}
       placement={dropdownPlacement}
       provider={provider}
       onModelChange={handleModelChange}
     >
-      <Center className={styles.model} height={blockSize} width={blockSize}>
-        <div className={styles.icon}>
-          <ModelIcon model={model} size={iconSize} />
-        </div>
+      <Center horizontal className={styles.trigger} height={28} paddingInline={6}>
+        <Flexbox horizontal align={'center'} gap={2}>
+          <span className={styles.name}>{displayName}</span>
+          <ChevronDownIcon className={styles.chevron} size={12} />
+        </Flexbox>
       </Center>
     </ModelSwitchPanel>
   );
 });
 
-ModelSwitch.displayName = 'ModelSwitch';
+ModelLabel.displayName = 'ModelLabel';
 
-export default ModelSwitch;
+export default ModelLabel;

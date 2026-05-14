@@ -50,12 +50,10 @@ const styles = createStaticStyles(({ css }) => ({
 
     height: 28px;
     padding-inline: 8px;
-    border-radius: 999px;
+    border-radius: 6px;
 
     font-size: 12px;
     color: ${cssVar.colorTextSecondary};
-
-    background: ${cssVar.colorFillTertiary};
 
     transition: all 0.2s;
 
@@ -104,7 +102,7 @@ const AGENT_CAPS = [
   { icon: TerminalIcon, key: 'env' },
 ] as const;
 
-const AgentMode = memo(() => {
+const ModeSelector = memo(() => {
   const { t } = useTranslation('chat');
   const agentId = useAgentId();
   const toggleAgentMode = useToggleAgentMode();
@@ -197,7 +195,7 @@ const AgentMode = memo(() => {
     <Popover
       content={popoverContent}
       open={open}
-      placement="bottomLeft"
+      placement="topLeft"
       trigger="click"
       styles={{
         content: { border: `1px solid ${cssVar.colorBorderSecondary}`, padding: 4 },
@@ -215,6 +213,6 @@ const AgentMode = memo(() => {
   );
 });
 
-AgentMode.displayName = 'AgentMode';
+ModeSelector.displayName = 'ModeSelector';
 
-export default AgentMode;
+export default ModeSelector;
