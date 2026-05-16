@@ -10,6 +10,7 @@ import { ClaudeCodeApiName } from '../../types';
 import { AgentInspector } from './Agent';
 import { AskUserQuestionInspector } from './AskUserQuestion';
 import { EditInspector } from './Edit';
+import { LinearMcpInspectors } from './LinearMcp';
 import { ReadInspector } from './Read';
 import { ScheduleWakeupInspector } from './ScheduleWakeup';
 import { SkillInspector } from './Skill';
@@ -17,6 +18,8 @@ import { TaskOutputInspector } from './TaskOutput';
 import { TaskStopInspector } from './TaskStop';
 import { TodoWriteInspector } from './TodoWrite';
 import { ToolSearchInspector } from './ToolSearch';
+import { WebFetchInspector } from './WebFetch';
+import { WebSearchInspector } from './WebSearch';
 import { WriteInspector } from './Write';
 
 // CC's own tool names (Bash / Edit / Glob / Grep / Read / Write) are already
@@ -44,5 +47,8 @@ export const ClaudeCodeInspectors = {
   [ClaudeCodeApiName.TaskStop]: TaskStopInspector,
   [ClaudeCodeApiName.TodoWrite]: TodoWriteInspector,
   [ClaudeCodeApiName.ToolSearch]: ToolSearchInspector,
+  [ClaudeCodeApiName.WebFetch]: WebFetchInspector,
+  [ClaudeCodeApiName.WebSearch]: WebSearchInspector,
   [ClaudeCodeApiName.Write]: WriteInspector,
+  ...LinearMcpInspectors,
 };
