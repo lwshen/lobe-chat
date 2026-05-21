@@ -9,6 +9,23 @@ import { createRuntimeExecutors, type RuntimeExecutorContext } from '../RuntimeE
 
 const mockCreateCompressionGroup = vi.fn();
 const mockFinalizeCompression = vi.fn();
+const mockBuiltinModels = vi.hoisted(() => [
+  {
+    abilities: { functionCall: true, video: false, vision: true },
+    id: 'gpt-4',
+    providerId: 'openai',
+  },
+  {
+    abilities: { functionCall: false, video: false, vision: false },
+    id: 'no-tools-model',
+    providerId: 'test-provider',
+  },
+  {
+    abilities: { functionCall: true, video: true, vision: true },
+    id: 'gemini-3.1-flash-lite-preview',
+    providerId: 'google',
+  },
+]);
 
 // Mock dependencies
 vi.mock('@/server/modules/ModelRuntime', () => ({
@@ -30,25 +47,13 @@ vi.mock('@lobechat/model-runtime', () => ({
   consumeStreamUntilDone: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('@/business/client/model-bank/loadModels', () => ({
+  loadModels: vi.fn().mockResolvedValue(mockBuiltinModels),
+}));
+
 // model-bank is a TypeScript source file that cannot be dynamically imported in vitest
 vi.mock('model-bank', () => ({
-  LOBE_DEFAULT_MODEL_LIST: [
-    {
-      abilities: { functionCall: true, video: false, vision: true },
-      id: 'gpt-4',
-      providerId: 'openai',
-    },
-    {
-      abilities: { functionCall: false, video: false, vision: false },
-      id: 'no-tools-model',
-      providerId: 'test-provider',
-    },
-    {
-      abilities: { functionCall: true, video: true, vision: true },
-      id: 'gemini-3.1-flash-lite-preview',
-      providerId: 'google',
-    },
-  ],
+  LOBE_DEFAULT_MODEL_LIST: mockBuiltinModels,
 }));
 
 describe('RuntimeExecutors', () => {
@@ -1064,6 +1069,46 @@ describe('RuntimeExecutors', () => {
         // Original user message should be preserved
         expect(chatMessages.at(-1)).toEqual(
           expect.objectContaining({ content: 'Hello', role: 'user' }),
+        );
+      });
+
+      it('should keep current turn when agent historyCount is 0', async () => {
+        const ctxWithConfig: RuntimeExecutorContext = {
+          ...ctx,
+          agentConfig: {
+            chatConfig: { enableHistoryCount: true, historyCount: 0 },
+            plugins: [],
+          },
+        };
+        const executors = createRuntimeExecutors(ctxWithConfig);
+        const state = createMockState();
+
+        const instruction = {
+          payload: {
+            messages: [
+              { content: 'History message', id: 'history-1', role: 'user' },
+              { content: 'History response', id: 'history-2', role: 'assistant' },
+              { content: 'Current message', id: 'current-1', role: 'user' },
+            ],
+            model: 'gpt-4',
+            provider: 'openai',
+          },
+          type: 'call_llm' as const,
+        };
+
+        await executors.call_llm!(instruction, state);
+
+        expect(engineSpy).toHaveBeenCalledWith(expect.objectContaining({ historyCount: 1 }));
+
+        const chatMessages = mockChat.mock.calls[0][0].messages;
+        expect(chatMessages).toContainEqual(
+          expect.objectContaining({ content: 'Current message', role: 'user' }),
+        );
+        expect(chatMessages).not.toContainEqual(
+          expect.objectContaining({ content: 'History message', role: 'user' }),
+        );
+        expect(chatMessages).not.toContainEqual(
+          expect.objectContaining({ content: 'History response', role: 'assistant' }),
         );
       });
 
@@ -2877,6 +2922,7 @@ describe('RuntimeExecutors', () => {
       expect(mockToolExecutionService.executeTool).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
+          skipResultTruncation: true,
           toolResultMaxLength: 5000,
         }),
       );
