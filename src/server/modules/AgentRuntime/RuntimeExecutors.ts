@@ -272,6 +272,14 @@ export interface RuntimeExecutorContext {
   streamManager: IStreamEventManager;
   toolExecutionService: ToolExecutionService;
   topicId?: string;
+  /**
+   * Trace-pipeline sink for context engine input/output. Wired by
+   * AgentRuntimeService so the trace recorder can pick CE data up
+   * out-of-band, keeping the heavy CE payload (agentDocuments, systemRole, …)
+   * out of the `events` array and therefore out of the Redis state pipeline.
+   * See LOBE-9110.
+   */
+  tracingContextEngine?: (input: unknown, output: unknown) => void;
   userId?: string;
   userTimezone?: string;
 }
@@ -364,7 +372,7 @@ export const createRuntimeExecutors = (
     // Get parentId from payload (parentId or parentMessageId depending on payload type)
     const parentId = llmPayload.parentId || (llmPayload as any).parentMessageId;
 
-    // Parent existence preflight (LOBE-7158 / LOBE-7154):
+    // Parent existence preflight ():
     // If the parent was deleted concurrently (e.g. user deleted topic mid-run),
     // assistant message creation below would hit a PG FK violation AFTER we've
     // already done the LLM call and spent tokens. Check first — fail fast,
@@ -714,7 +722,7 @@ export const createRuntimeExecutors = (
 
         processedMessages = await serverMessagesEngine(contextEngineInput);
 
-        // Emit context engine event for tracing
+        // Hand context engine input/output to the trace sink out-of-band.
         // Omit large/redundant fields to reduce snapshot size:
         // - input.messages: reconstructible from step's messagesBaseline + messagesDelta
         // - input.toolsConfig: static per operation, ~47KB of manifests repeated every call_llm step
@@ -724,14 +732,10 @@ export const createRuntimeExecutors = (
           toolsConfig: _toolsConfig,
           ...contextEngineInputLite
         } = contextEngineInput;
-        events.push({
-          input: {
-            ...contextEngineInputLite,
-            toolCount: _toolsConfig?.tools?.length ?? 0,
-          },
-          output: processedMessages,
-          type: 'context_engine_result',
-        } as any);
+        ctx.tracingContextEngine?.(
+          { ...contextEngineInputLite, toolCount: _toolsConfig?.tools?.length ?? 0 },
+          processedMessages,
+        );
       } else {
         processedMessages = llmPayload.messages;
       }
@@ -924,7 +928,7 @@ export const createRuntimeExecutors = (
                 // self-reflection signal the model needs to fix its own output.
                 // Sanitization happens later, only at the persist boundaries
                 // (DB write and state.messages push) to protect strict providers
-                // replaying history. See LOBE-7761.
+                // replaying history. See .
                 const payload = resolvedCalls.map((p) => ({
                   ...p,
                   executor: resolved.executorMap?.[p.identifier],
@@ -1062,7 +1066,7 @@ export const createRuntimeExecutors = (
 
             // Sanitize tool_call `arguments` before persisting to DB so malformed
             // JSON (e.g. Qwen emitting `{, ...}`) can't poison future context
-            // builds and 400 strict providers like NVIDIA NIM. See LOBE-7761.
+            // builds and 400 strict providers like NVIDIA NIM. See .
             const persistedTools =
               toolsCalling.length > 0
                 ? toolsCalling.map((t) => ({
@@ -1790,7 +1794,7 @@ export const createRuntimeExecutors = (
       // Finally persist to database. In resumption mode (skipCreateToolMessage),
       // the pending tool message already exists from request_human_approve, so
       // we update it in-place rather than inserting a new row — inserting would
-      // either duplicate the tool_call_id or violate parent_id FK (LOBE-7154).
+      // either duplicate the tool_call_id or violate parent_id FK ().
       let toolMessageId: string | undefined;
       try {
         if (payload.skipCreateToolMessage) {
@@ -1954,7 +1958,7 @@ export const createRuntimeExecutors = (
     } catch (error) {
       // Persist-level failures (parent FK violation etc.) must propagate so
       // the step fails — otherwise the swallow-and-continue path keeps
-      // running the agent on a broken conversation chain. See LOBE-7158.
+      // running the agent on a broken conversation chain. See .
       if (isPersistFatal(error)) throw error;
 
       if (ctx.hookDispatcher) {
@@ -2294,7 +2298,7 @@ export const createRuntimeExecutors = (
             // Normalize BEFORE publishing — clients treat `error` stream
             // events as terminal and surface `event.data.error` directly, so
             // a raw SQL error here would leak driver text to the user before
-            // the ConversationParentMissing throw is consumed. See LOBE-7158.
+            // the ConversationParentMissing throw is consumed. See .
             const fatal = isParentMessageMissingError(error)
               ? createConversationParentMissingError(parentMessageId, error)
               : error instanceof Error
@@ -2900,7 +2904,7 @@ export const createRuntimeExecutors = (
           // newState.messages. When the approval resumes, the `call_tool`
           // executor (skip-create branch) appends the resolved tool message
           // to state.messages itself. Pushing a placeholder here produced
-          // two entries for the same tool_call_id — see LOBE-7151 review P2.
+          // two entries for the same tool_call_id — see review P2.
 
           log(
             '[%s:%d] Created pending tool message %s for %s',
@@ -3017,7 +3021,7 @@ export const createRuntimeExecutors = (
           error,
         );
         // Normalize BEFORE publishing so clients surface the typed business
-        // error instead of the raw driver text (see LOBE-7158 review).
+        // error instead of the raw driver text (see review).
         const fatal = isParentMessageMissingError(error)
           ? createConversationParentMissingError(parentMessageId, error)
           : error instanceof Error

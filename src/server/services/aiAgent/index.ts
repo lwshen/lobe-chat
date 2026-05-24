@@ -873,7 +873,13 @@ export class AiAgentService {
         if (!result.success) {
           log('execAgent: remote hetero dispatch failed: %s', result.error);
           await streamManager
-            .publishAgentRuntimeEnd(operationId, 0, { error: result.error }, 'error', result.error)
+            .publishAgentRuntimeEnd({
+              finalState: { error: result.error },
+              operationId,
+              reason: 'error',
+              reasonDetail: result.error,
+              stepIndex: 0,
+            })
             .catch(() => {});
           await this.messageModel.update(assistantMsg.id, {
             content: '',
@@ -1176,7 +1182,7 @@ export class AiAgentService {
       // bypassing the engine's enabledToolIds exclusion. Skipping the
       // assignment here closes that bypass at the source.
       //
-      // Resolution order (LOBE-9378):
+      // Resolution order ():
       // 1. boundDeviceId (topic-bound > agent-bound): use if online; if offline,
       //    respect the explicit choice and stay unrouted — don't silently fall
       //    back to a different device, that would surprise the user.
@@ -1185,7 +1191,7 @@ export class AiAgentService {
       //    recency / first-online would be a guess that could route tool calls
       //    to the wrong machine. This applies uniformly to regular chat and
       //    IM/Bot — the previous "regular-chat does nothing" path was the bug
-      //    behind LOBE-9378 (the local-system system prompt's
+      //    behind (the local-system system prompt's
       //    `{{workingDirectory}}` reached the LLM as a literal, wasting the
       //    first N steps groping for cwd).
       activeDeviceId = !canUseDevice
@@ -1253,7 +1259,7 @@ export class AiAgentService {
       // installed plugin, a LobeHub Skill, or a Klavis manifest declaring
       // `identifier: 'lobe-remote-device'` would otherwise reach the
       // activator-discovery map and let an external bot sender enable it
-      // (LOBE-8768). Centralising the check at the ingest layer means
+      // (). Centralising the check at the ingest layer means
       // every future manifest source automatically inherits the wall.
       const isManifestIngestAllowed = (identifier: string): boolean =>
         canUseDevice || !isDeviceToolIdentifier(identifier);
@@ -1419,7 +1425,7 @@ export class AiAgentService {
 
     // 9.4. Fetch device system info for placeholder variable replacement.
     //
-    // Decoupled from activeDeviceId routing (LOBE-9378): pulled into a helper
+    // Decoupled from activeDeviceId routing (): pulled into a helper
     // so the device whose info populates the template (`{{hostname}}`,
     // `{{workingDirectory}}`, etc.) is a separate decision from the device
     // that tool calls route to. Today they're aligned — but future policy
