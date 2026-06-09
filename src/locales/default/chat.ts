@@ -827,13 +827,29 @@ export default {
   'taskList.unassignedHint': 'Lobe AI will run this task when no assignee is set',
   'taskList.assigneeSearch.empty': 'No matching agent',
   'taskList.assigneeSearch.placeholder': 'Search agent...',
+  'taskList.contextMenu.copyConfirm': 'Copy',
+  'taskList.contextMenu.copyDescription':
+    'Clone this task (and all its subtasks) into another workspace. Status resets to backlog.',
+  'taskList.contextMenu.copyFailed': 'Failed to copy task',
   'taskList.contextMenu.copyId': 'Copy ID',
   'taskList.contextMenu.copyIdSuccess': 'ID copied',
   'taskList.contextMenu.copyLink': 'Copy Link',
   'taskList.contextMenu.copyLinkSuccess': 'Link copied',
+  'taskList.contextMenu.copySuccess': 'Task copied',
+  'taskList.contextMenu.copyTitle': 'Copy task',
+  'taskList.contextMenu.copyTo': 'Copy to…',
   'taskList.contextMenu.priority': 'Priority',
   'taskList.contextMenu.runNow': 'Run now',
   'taskList.contextMenu.status': 'Status',
+  'taskList.contextMenu.transferConfirm': 'Transfer',
+  'taskList.contextMenu.transferDescription':
+    'Move this task (and all its subtasks) to another workspace. Identifiers will be re-assigned.',
+  'taskList.contextMenu.transferFailed': 'Failed to transfer task',
+  'taskList.contextMenu.transferSuccess': 'Task transferred',
+  'taskList.contextMenu.transferTitle': 'Transfer task',
+  'taskList.contextMenu.transferTo': 'Transfer to…',
+  'taskList.contextMenu.transferWarning':
+    'Cross-workspace references like assigned agent and active topic will be cleared.',
   'taskList.kanban.addTask': 'Create task',
   'taskList.kanban.backlog': 'Backlog',
   'taskList.kanban.canceled': 'Canceled',
@@ -952,7 +968,7 @@ export default {
   'upload.validation.unsupportedFileType':
     'Unsupported file type: {{files}}. Supported images: JPG, PNG, GIF, WebP. Supported documents include PDF, Word, Excel, PowerPoint, Markdown, text, CSV, JSON, and code files.',
   'upload.validation.videoSizeExceeded':
-    'Video file size must not exceed 20MB. Current file size is {{actualSize}}.',
+    'Video file size must not exceed {{maxSize}}. Current file size is {{actualSize}}.',
   'viewMode.fullWidth': 'Full Width',
   'viewMode.normal': 'Standard',
   'viewMode.wideScreen': 'Widescreen',
