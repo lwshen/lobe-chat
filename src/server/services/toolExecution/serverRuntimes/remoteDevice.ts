@@ -3,7 +3,8 @@ import {
   RemoteDeviceIdentifier,
 } from '@lobechat/builtin-tool-remote-device';
 
-import { deviceProxy } from '../deviceProxy';
+import { deviceGateway } from '@/server/services/deviceGateway';
+
 import { type ServerRuntimeRegistration } from './types';
 
 export const remoteDeviceRuntime: ServerRuntimeRegistration = {
@@ -15,7 +16,7 @@ export const remoteDeviceRuntime: ServerRuntimeRegistration = {
     const userId = context.userId;
 
     return new RemoteDeviceExecutionRuntime({
-      queryDeviceList: () => deviceProxy.queryDeviceList(userId),
+      queryDeviceList: () => deviceGateway.queryDeviceList(userId),
     });
   },
   identifier: RemoteDeviceIdentifier,

@@ -6,7 +6,6 @@ import debug from 'debug';
 import { type ModelProvider } from 'model-bank';
 import superjson from 'superjson';
 
-import { withElectronProtocolIfElectron } from '@/const/protocol';
 import { isDesktop } from '@/const/version';
 import { type LambdaRouter } from '@/server/routers/lambda';
 
@@ -44,14 +43,21 @@ const errorHandlingLink: TRPCLink<LambdaRouter> = () => {
                 if (isMarketApi) {
                   // Market API 401: emit event for MarketAuthProvider to handle
                   // Don't trigger LobeChat logout for market auth issues
+                  const { getUserStoreState } = await import('@/store/user/store');
+                  // Without a LobeChat session a market.* 401 is not a Market auth
+                  // issue — let it bubble instead of triggering the auth modal
+                  if (!getUserStoreState().isSignedIn) break;
                   const now = Date.now();
                   if (now - lastMarket401Time > MIN_401_INTERVAL) {
                     lastMarket401Time = now;
                     // Dynamically import to avoid circular dependencies
                     const { marketAuthEvents } =
                       await import('@/layout/AuthProvider/MarketAuth/events');
+                    const { pathToMarketAuthScene } =
+                      await import('@/layout/AuthProvider/MarketAuth/scenes');
                     marketAuthEvents.emit('market-unauthorized', {
                       path: op.path,
+                      scene: pathToMarketAuthScene(op.path),
                       timestamp: now,
                     });
                   }
@@ -98,19 +104,7 @@ const errorHandlingLink: TRPCLink<LambdaRouter> = () => {
 const linkOptions = {
   fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
     // Ensure credentials are included to send cookies (like mp_token)
-
-    const fetchOptions: RequestInit = {
-      ...init,
-      credentials: 'include',
-    };
-
-    if (isDesktop) {
-      const res = await fetch(input as string, fetchOptions);
-
-      if (res) return res;
-    }
-
-    return await fetch(input, fetchOptions);
+    return fetch(input, { ...init, credentials: 'include' });
   },
   headers: async () => {
     // dynamic import to avoid circular dependency
@@ -134,7 +128,7 @@ const linkOptions = {
     return headers;
   },
   transformer: superjson,
-  url: withElectronProtocolIfElectron('/trpc/lambda'),
+  url: '/trpc/lambda',
 };
 
 // Procedures that should skip batching for faster initial load

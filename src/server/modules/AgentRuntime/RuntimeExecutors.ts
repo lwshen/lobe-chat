@@ -71,6 +71,7 @@ import { type MessageModel, MessageModel as MessageModelClass } from '@/database
 import { TopicModel } from '@/database/models/topic';
 import { UserModel } from '@/database/models/user';
 import { type LobeChatDatabase } from '@/database/type';
+import { fileEnv } from '@/envs/file';
 import { serverMessagesEngine } from '@/server/modules/Mecha/ContextEngineering';
 import { type EvalContext } from '@/server/modules/Mecha/ContextEngineering/types';
 import { initModelRuntimeFromDB } from '@/server/modules/ModelRuntime';
@@ -85,11 +86,13 @@ import { FileService } from '@/server/services/file';
 import { MessageService } from '@/server/services/message';
 import { OnboardingService } from '@/server/services/onboarding';
 import {
+  type ServerSubAgentRunner,
   type ToolExecutionResultResponse,
   type ToolExecutionService,
 } from '@/server/services/toolExecution';
 import { archiveToolResultIfNeeded } from '@/server/services/toolExecution/archiveToolResult';
 import { toAgentContextDocuments } from '@/utils/agentDocumentContextMapping';
+import { nanoid } from '@/utils/uuid';
 
 import { dispatchClientTool } from './dispatchClientTool';
 import { formatErrorEventData } from './formatErrorEventData';
@@ -233,6 +236,88 @@ const buildPostProcessUrl = (ctx: Pick<RuntimeExecutorContext, 'serverDB' | 'use
   }
   return (path: string | null, file: { id?: string | null }) =>
     fileService!.getFileAccessUrl({ id: file.id, url: path });
+};
+
+/**
+ * Build the per-tool-call server sub-agent runner injected into the tool
+ * execution context. Closes over the current tool payload + parent message so
+ * the `callSubAgent` server tool can fork a child op without re-deriving the
+ * message anchor (which it cannot do correctly from its own context).
+ *
+ * The runner creates the pending placeholder tool message that anchors the
+ * isolation thread (so the UI shows a loading state and the completion bridge
+ * has a message to backfill), then kicks off the child op asynchronously and
+ * returns immediately. Returns `undefined` when sub-agent execution is not
+ * available (no `execSubAgentTask` callback, or missing agent/topic context).
+ */
+const buildServerSubAgentRunner = (
+  ctx: RuntimeExecutorContext,
+  state: AgentState,
+  chatToolPayload: ChatToolPayload,
+  parentMessageId: string,
+): ServerSubAgentRunner | undefined => {
+  const execSubAgentTask = ctx.execSubAgentTask;
+  if (!execSubAgentTask) return undefined;
+
+  const agentId = state.metadata?.agentId;
+  const topicId = ctx.topicId ?? state.metadata?.topicId;
+  if (!agentId || !topicId) return undefined;
+
+  return {
+    run: async ({ agentId: targetAgentId, description, instruction, timeout }) => {
+      // 1. Create the pending placeholder tool message (mirrors the normal
+      //    tool-message shape in call_tool) that anchors the isolation thread
+      //    and renders a loading state until the bridge backfills it.
+      const placeholder = await ctx.messageModel.create({
+        agentId,
+        content: '',
+        parentId: parentMessageId,
+        plugin: chatToolPayload as any,
+        pluginState: { status: 'pending' },
+        role: 'tool',
+        threadId: state.metadata?.threadId,
+        tool_call_id: chatToolPayload.id,
+        topicId,
+      });
+
+      // 2. Fork the child op anchored to the placeholder. `resumeParentOnComplete`
+      //    tells execSubAgentTask to register the completion bridge that
+      //    backfills this tool message and resumes the parent op.
+      const result = (await execSubAgentTask({
+        agentId: targetAgentId ?? agentId,
+        groupId: state.metadata?.groupId ?? undefined,
+        instruction,
+        parentMessageId: placeholder.id,
+        parentOperationId: ctx.operationId,
+        resumeParentOnComplete: true,
+        timeout,
+        title: description,
+        topicId,
+      })) as { operationId?: string; success?: boolean; threadId?: string } | undefined;
+
+      // 3. If the child op never started, no completion bridge will fire — parking
+      //    the parent on it would hang forever. Drop the placeholder and signal
+      //    `started: false` so callSubAgent surfaces an inline tool error instead.
+      if (!result?.success) {
+        try {
+          await ctx.messageModel.deleteMessage(placeholder.id);
+        } catch (error) {
+          log(
+            'buildServerSubAgentRunner: failed to clean up placeholder %s: %O',
+            placeholder.id,
+            error,
+          );
+        }
+        return { started: false, subOperationId: result?.operationId, threadId: '' };
+      }
+
+      return {
+        started: true,
+        subOperationId: result?.operationId,
+        threadId: result?.threadId ?? '',
+      };
+    },
+  };
 };
 
 const shouldRetryLLM = (kind: LLMErrorKind, attempt: number, maxRetries: number) =>
@@ -574,7 +659,7 @@ export const createRuntimeExecutors = (
         if (agentId && ctx.serverDB && ctx.userId) {
           try {
             const agentDocService = new AgentDocumentsService(ctx.serverDB, ctx.userId);
-            const docs = await agentDocService.getAgentDocuments(agentId);
+            const docs = await agentDocService.getAgentContextDocuments(agentId);
             if (docs.length > 0) {
               agentDocuments = toAgentContextDocuments(docs);
               log('Resolved %d agent documents for agent %s', agentDocuments.length, agentId);
@@ -705,6 +790,23 @@ export const createRuntimeExecutors = (
         // {{sandbox_enabled}} — mirrors client-side check for lobe-cloud-sandbox.
         const sandboxEnabled = String(resolved.enabledToolIds.includes('lobe-cloud-sandbox'));
 
+        // {{sandbox_uploaded_files}} — lists the topic/session files that are
+        // synced into the sandbox upload dir, so the agent knows they exist.
+        // Mirrors the bootstrap query in SandboxMiddlewareService.
+        let sandboxUploadedFiles = '';
+        if (sandboxEnabled === 'true' && ctx.serverDB && ctx.userId && lobehubSkillTopicId) {
+          try {
+            const { FileModel } = await import('@/database/models/file');
+            const { formatUploadedFilesPrompt } =
+              await import('@lobechat/builtin-tool-cloud-sandbox');
+            const fileModel = new FileModel(ctx.serverDB, ctx.userId);
+            const uploadedFiles = await fileModel.findFilesToInitInSandbox(lobehubSkillTopicId);
+            sandboxUploadedFiles = formatUploadedFilesPrompt(uploadedFiles);
+          } catch (error) {
+            log('Failed to resolve files for {{sandbox_uploaded_files}} substitution: %O', error);
+          }
+        }
+
         // {{session_date}} — current date formatted for user's timezone.
         const sessionDate = new Intl.DateTimeFormat('en-US', {
           day: 'numeric',
@@ -794,6 +896,7 @@ export const createRuntimeExecutors = (
             session_date: sessionDate,
             // Creds tool variables
             sandbox_enabled: sandboxEnabled,
+            sandbox_uploaded_files: sandboxUploadedFiles,
             CREDS_LIST: credsListStr,
             KLAVIS_SERVICES_LIST: klavisServicesListStr,
             // Memory tool variables
@@ -1001,6 +1104,50 @@ export const createRuntimeExecutors = (
         }
       };
 
+      // File service + date shard used to persist model-generated images
+      // (Gemini multimodal `content_part`/`reasoning_part` images) to object
+      // storage, built once and reused across parts. The `userId` check only
+      // satisfies its optional type — it is always present in this executor.
+      // A missing-S3-config failure surfaces later at uploadBase64 (caught per
+      // image in uploadPartImage), never at construction.
+      const imageUploadService = ctx.userId ? new FileService(ctx.serverDB, ctx.userId) : undefined;
+      const imageUploadDate = new Date().toISOString().split('T')[0];
+
+      // Coalesce a streamed text chunk into the trailing text part (mirrors the
+      // client StreamingHandler) so serialized multimodal content stays compact
+      // and preserves text/image ordering.
+      const appendTextPart = (parts: ContentPart[], text: string) => {
+        const last = parts.at(-1);
+        if (last && last.type === 'text') {
+          parts[parts.length - 1] = { text: last.text + text, type: 'text' };
+        } else {
+          parts.push({ text, type: 'text' });
+        }
+      };
+
+      // Persist a base64 image part to object storage and swap the placeholder
+      // part for one referencing the uploaded URL. Runs concurrently with the
+      // rest of the stream; a failed upload leaves the inline data-URI so the
+      // image still renders. Never stores raw base64 in the message on success.
+      const uploadPartImage = (
+        parts: ContentPart[],
+        partIndex: number,
+        base64: string,
+        mimeType: string | undefined,
+      ): Promise<void> => {
+        if (!imageUploadService) return Promise.resolve();
+        const ext = mimeType?.split('/')[1] || 'png';
+        const pathname = `${fileEnv.NEXT_PUBLIC_S3_FILE_PATH}/generations/${imageUploadDate}/${nanoid()}.${ext}`;
+        return imageUploadService
+          .uploadBase64(base64, pathname)
+          .then(({ url }) => {
+            parts[partIndex] = { image: url, type: 'image' };
+          })
+          .catch((error) => {
+            console.error(`[${operationLogId}][content_part] image upload failed:`, error);
+          });
+      };
+
       const maxAttempts = resolveLLMMaxAttempts(provider);
 
       // OTel chat span — wraps all retry attempts; TTFT recorded on the first
@@ -1036,8 +1183,10 @@ export const createRuntimeExecutors = (
             let streamError: any = undefined;
             const contentParts: ContentPart[] = [];
             const reasoningParts: ContentPart[] = [];
-            const hasContentImages = false;
-            const hasReasoningImages = false;
+            const contentImageUploads: Promise<void>[] = [];
+            const reasoningImageUploads: Promise<void>[] = [];
+            let hasContentImages = false;
+            let hasReasoningImages = false;
             textBuffer = '';
             reasoningBuffer = '';
 
@@ -1139,6 +1288,74 @@ export const createRuntimeExecutors = (
                       }, BUFFER_INTERVAL);
                     }
                   },
+                  // Gemini 2.5+/3 multimodal streams deliver assistant text and
+                  // reasoning as `content_part`/`reasoning_part` events (triggered by
+                  // thought parts / thoughtSignature) instead of plain `text`/
+                  // `reasoning`. Without these handlers the text is silently dropped:
+                  // `onCompletion` still reports usage tokens, so the empty-completion
+                  // guard sees outputTokens > 0 and finalizes the turn to a blank
+                  // `done`. Mirror onText/onThinking for text parts so streaming,
+                  // persistence and tracing all capture the content; upload image
+                  // parts to object storage and serialize the multimodal content
+                  // (text + image URLs, in order) — never persist raw base64.
+                  onContentPart: async (part) => {
+                    if (firstChunkAt === undefined) {
+                      firstChunkAt = Date.now() - llmStartTime;
+                    }
+
+                    if (part.partType === 'image') {
+                      const partIndex = contentParts.length;
+                      contentParts.push({
+                        image: `data:${part.mimeType || 'image/png'};base64,${part.content}`,
+                        type: 'image',
+                      });
+                      hasContentImages = true;
+                      contentImageUploads.push(
+                        uploadPartImage(contentParts, partIndex, part.content, part.mimeType),
+                      );
+                      return;
+                    }
+
+                    content += part.content;
+                    appendTextPart(contentParts, part.content);
+                    textBuffer += part.content;
+
+                    if (!textBufferTimer) {
+                      textBufferTimer = setTimeout(async () => {
+                        await flushTextBuffer();
+                        textBufferTimer = null;
+                      }, BUFFER_INTERVAL);
+                    }
+                  },
+                  onReasoningPart: async (part) => {
+                    if (firstChunkAt === undefined) {
+                      firstChunkAt = Date.now() - llmStartTime;
+                    }
+
+                    if (part.partType === 'image') {
+                      const partIndex = reasoningParts.length;
+                      reasoningParts.push({
+                        image: `data:${part.mimeType || 'image/png'};base64,${part.content}`,
+                        type: 'image',
+                      });
+                      hasReasoningImages = true;
+                      reasoningImageUploads.push(
+                        uploadPartImage(reasoningParts, partIndex, part.content, part.mimeType),
+                      );
+                      return;
+                    }
+
+                    thinkingContent += part.content;
+                    appendTextPart(reasoningParts, part.content);
+                    reasoningBuffer += part.content;
+
+                    if (!reasoningBufferTimer) {
+                      reasoningBufferTimer = setTimeout(async () => {
+                        await flushReasoningBuffer();
+                        reasoningBufferTimer = null;
+                      }, BUFFER_INTERVAL);
+                    }
+                  },
                   onToolsCalling: async ({ toolsCalling: raw }) => {
                     const resolvedCalls = new ToolNameResolver().resolve(raw, resolved.manifestMap);
                     // Attach source (origin) and executor (dispatch target) for routing.
@@ -1202,6 +1419,12 @@ export const createRuntimeExecutors = (
               await flushTextBuffer();
               await flushReasoningBuffer();
               clearAttemptBuffers();
+
+              // Wait for any model-generated image uploads to finish so the
+              // persisted multimodal content references S3 URLs, not base64.
+              if (contentImageUploads.length > 0 || reasoningImageUploads.length > 0) {
+                await Promise.allSettled([...contentImageUploads, ...reasoningImageUploads]);
+              }
 
               // Empty-completion guard: if the model produced
               // nothing actionable — no content, reasoning, tool calls, images,
@@ -1923,7 +2146,7 @@ export const createRuntimeExecutors = (
 
           const newState = structuredClone(state);
           newState.lastModified = new Date().toISOString();
-          newState.status = 'interrupted';
+          newState.status = 'waiting_for_async_tool';
           newState.interruption = {
             canResume: true,
             interruptedAt: new Date().toISOString(),
@@ -2061,6 +2284,7 @@ export const createRuntimeExecutors = (
                 activeDeviceId: state.metadata?.activeDeviceId,
                 agentId: state.metadata?.agentId,
                 documentId: state.metadata?.documentId,
+                execSubAgentTask: ctx.execSubAgentTask,
                 executionTimeoutMs: timeoutMs,
                 groupId: state.metadata?.groupId,
                 memoryToolPermission: agentConfig?.chatConfig?.memory?.toolPermission,
@@ -2078,6 +2302,12 @@ export const createRuntimeExecutors = (
                 scope: state.metadata?.scope,
                 serverDB: ctx.serverDB,
                 skipResultTruncation: true,
+                subAgent: buildServerSubAgentRunner(
+                  ctx,
+                  state,
+                  chatToolPayload,
+                  payload.parentMessageId,
+                ),
                 taskId: state.metadata?.taskId,
                 threadId: state.metadata?.threadId,
                 toolCallId: chatToolPayload.id,
@@ -2093,6 +2323,42 @@ export const createRuntimeExecutors = (
               toolName,
             },
           );
+        }
+
+        // Deferred tool (e.g. async sub-agent): the executor performed its
+        // side-effect and created a pending placeholder; the real result is
+        // delivered out-of-band later by a completion bridge. Park like a
+        // client tool — surface the pending call, hold it in pendingToolsCalling,
+        // and do not write a tool_result now.
+        if (execution.result.deferred) {
+          log(`[${operationLogId}] Tool ${toolName} deferred; parking for async result`);
+          await streamManager.publishStreamChunk(operationId, stepIndex, {
+            chunkType: 'tools_calling',
+            toolsCalling: [chatToolPayload] as any,
+          });
+          executeToolSpan.setAttributes(
+            buildExecuteToolResultAttributes({ attempts: execution.attempts, success: true }),
+          );
+          const newState = structuredClone(state);
+          newState.lastModified = new Date().toISOString();
+          newState.status = 'waiting_for_async_tool';
+          newState.interruption = {
+            canResume: true,
+            interruptedAt: new Date().toISOString(),
+            reason: 'async_tool',
+          };
+          newState.pendingToolsCalling = [chatToolPayload];
+          return {
+            events: [
+              {
+                canResume: true,
+                interruptedAt: new Date().toISOString(),
+                reason: 'async_tool',
+                type: 'interrupted',
+              },
+            ],
+            newState,
+          };
         }
 
         const executionResult = await archiveRuntimeToolResult(execution.result, {
@@ -2417,7 +2683,7 @@ export const createRuntimeExecutors = (
 
       const newState = structuredClone(state);
       newState.lastModified = new Date().toISOString();
-      newState.status = 'interrupted';
+      newState.status = 'waiting_for_async_tool';
       newState.interruption = {
         canResume: true,
         interruptedAt: new Date().toISOString(),
@@ -2441,6 +2707,9 @@ export const createRuntimeExecutors = (
     // Track all tool message IDs created during execution
     const toolMessageIds: string[] = [];
     const toolResults: any[] = [];
+    // Deferred (async) tools whose result is delivered out-of-band later;
+    // collected here so the batch parks for them after server tools finish.
+    const deferredTools: ChatToolPayload[] = [];
 
     // Execute server tools concurrently (skip client tools in mixed batch)
     const toolsToExecute = serverTools.length > 0 ? serverTools : toolsCalling;
@@ -2593,6 +2862,7 @@ export const createRuntimeExecutors = (
                     activeDeviceId: state.metadata?.activeDeviceId,
                     agentId: state.metadata?.agentId,
                     documentId: state.metadata?.documentId,
+                    execSubAgentTask: ctx.execSubAgentTask,
                     executionTimeoutMs: timeoutMs,
                     groupId: state.metadata?.groupId,
                     memoryToolPermission: batchAgentConfig?.chatConfig?.memory?.toolPermission,
@@ -2601,6 +2871,12 @@ export const createRuntimeExecutors = (
                     scope: state.metadata?.scope,
                     serverDB: ctx.serverDB,
                     skipResultTruncation: true,
+                    subAgent: buildServerSubAgentRunner(
+                      ctx,
+                      state,
+                      chatToolPayload,
+                      payload.parentMessageId,
+                    ),
                     taskId: state.metadata?.taskId,
                     threadId: state.metadata?.threadId,
                     toolCallId: chatToolPayload.id,
@@ -2616,6 +2892,18 @@ export const createRuntimeExecutors = (
                   toolName,
                 },
               );
+            }
+
+            // Deferred (async) tool: executor created a pending placeholder and
+            // the real result arrives out-of-band. Skip the tool_result write;
+            // the batch parks for it after all server tools settle.
+            if (execution.result.deferred) {
+              log(`[${operationLogId}] Tool ${toolName} deferred; will park after batch`);
+              deferredTools.push(chatToolPayload);
+              batchExecuteToolSpan.setAttributes(
+                buildExecuteToolResultAttributes({ attempts: execution.attempts, success: true }),
+              );
+              return;
             }
 
             const executionResult = await archiveRuntimeToolResult(execution.result, {
@@ -2872,24 +3160,31 @@ export const createRuntimeExecutors = (
     // Get the last tool message ID as parentMessageId for next LLM call
     const lastToolMessageId = toolMessageIds.at(-1);
 
-    // If there are remaining client tools in a mixed batch, interrupt after server tools
-    if (clientTools.length > 0) {
+    // Park if any tools still owe an out-of-band result: client tools (run on
+    // the client) and/or deferred async tools (e.g. sub-agents). The operation
+    // resumes once every pending tool's result is delivered.
+    const pendingTools = [...deferredTools, ...clientTools];
+    if (pendingTools.length > 0) {
+      // Prefer the async-tool reason when any deferred tool is present; the
+      // individual pending payloads still carry their own identity for the
+      // resume gate.
+      const pauseReason = deferredTools.length > 0 ? 'async_tool' : 'client_tool_execution';
       log(
-        `[${operationLogId}][call_tools_batch] Mixed batch: ${serverTools.length} server tools done, pausing for ${clientTools.length} client tools`,
+        `[${operationLogId}][call_tools_batch] Pausing after ${serverTools.length} server tools: ${deferredTools.length} deferred + ${clientTools.length} client`,
       );
 
       await streamManager.publishStreamChunk(operationId, stepIndex, {
         chunkType: 'tools_calling',
-        toolsCalling: clientTools as any,
+        toolsCalling: pendingTools as any,
       });
 
-      newState.status = 'interrupted';
+      newState.status = 'waiting_for_async_tool';
       newState.interruption = {
         canResume: true,
         interruptedAt: new Date().toISOString(),
-        reason: 'client_tool_execution',
+        reason: pauseReason,
       };
-      newState.pendingToolsCalling = clientTools;
+      newState.pendingToolsCalling = pendingTools;
 
       return {
         events: [
@@ -2897,7 +3192,7 @@ export const createRuntimeExecutors = (
           {
             canResume: true,
             interruptedAt: new Date().toISOString(),
-            reason: 'client_tool_execution',
+            reason: pauseReason,
             type: 'interrupted',
           },
         ],
@@ -3372,6 +3667,107 @@ export const createRuntimeExecutors = (
       events,
       newState,
       // Do not provide nextContext as it requires waiting for human intervention
+    };
+  },
+
+  /**
+   * Resolve tools blocked in headless mode.
+   * Creates tool results without executing the tools, then continues the loop.
+   */
+  resolve_blocked_tools: async (instruction, state) => {
+    const { payload } = instruction as Extract<AgentInstruction, { type: 'resolve_blocked_tools' }>;
+    const { parentMessageId, toolsCalling } = payload;
+    const { operationId, stepIndex, streamManager } = ctx;
+    const events: AgentEvent[] = [];
+    const newState = structuredClone(state);
+    const toolResults: Array<{ data: ToolExecutionResultResponse; toolCallId: string }> = [];
+    const toolMessageIds: string[] = [];
+
+    log('[%s:%d] Resolving %d blocked tools', operationId, stepIndex, toolsCalling.length);
+
+    for (const toolPayload of toolsCalling) {
+      const result: ToolExecutionResultResponse = {
+        content: 'Blocked by security/privacy.',
+        error: 'blocked_by_security_privacy',
+        executionTime: 0,
+        state: { type: 'blocked' },
+        success: false,
+      };
+
+      await streamManager.publishStreamEvent(operationId, {
+        data: {
+          executionTime: 0,
+          isSuccess: false,
+          attempts: 0,
+          maxAttempts: 0,
+          payload: { parentMessageId, toolCalling: toolPayload },
+          phase: 'tool_execution',
+          result,
+        },
+        stepIndex,
+        type: 'tool_end',
+      });
+
+      try {
+        const toolMessage = await ctx.messageModel.create({
+          agentId: state.metadata!.agentId!,
+          content: result.content,
+          metadata: { toolExecutionTimeMs: 0 },
+          parentId: parentMessageId,
+          plugin: toolPayload as any,
+          pluginError: result.error,
+          pluginIntervention: { rejectedReason: result.error, status: 'rejected' },
+          pluginState: result.state,
+          role: 'tool',
+          threadId: state.metadata?.threadId,
+          tool_call_id: toolPayload.id,
+          topicId: state.metadata?.topicId,
+        });
+        toolMessageIds.push(toolMessage.id);
+      } catch (error) {
+        console.error('[resolve_blocked_tools] Failed to create blocked tool message: %O', error);
+        const fatal = isMidOperationReferenceMissingError(error)
+          ? createConversationParentMissingError(parentMessageId, error)
+          : error instanceof Error
+            ? error
+            : new Error(String(error));
+        await streamManager.publishStreamEvent(operationId, {
+          data: formatErrorEventData(fatal, 'tool_message_persist'),
+          stepIndex,
+          type: 'error',
+        });
+        throw fatal;
+      }
+
+      newState.messages.push({
+        content: result.content,
+        role: 'tool',
+        tool_call_id: toolPayload.id,
+      });
+      events.push({ id: toolPayload.id, result, type: 'tool_result' });
+      toolResults.push({ data: result, toolCallId: toolPayload.id });
+    }
+
+    newState.lastModified = new Date().toISOString();
+
+    return {
+      events,
+      newState,
+      nextContext: {
+        payload: {
+          parentMessageId: toolMessageIds.at(-1) ?? parentMessageId,
+          toolCount: toolsCalling.length,
+          toolResults,
+        },
+        phase: 'tools_batch_result',
+        session: {
+          eventCount: events.length,
+          messageCount: newState.messages.length,
+          sessionId: operationId,
+          status: 'running',
+          stepCount: state.stepCount + 1,
+        },
+      },
     };
   },
 

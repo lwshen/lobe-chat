@@ -5,7 +5,8 @@ export type AgentSignalOperationKind =
   | 'memory'
   | 'nightly-review'
   | 'self-feedback-intent'
-  | 'self-reflection';
+  | 'self-reflection'
+  | 'skill';
 
 /**
  * Run-scoped Agent Signal marker stamped onto a background agent operation at
@@ -93,22 +94,6 @@ export interface ExecAgentAppContext {
 }
 
 /**
- * A project-level skill discovered on the device filesystem
- * (`.agents/skills` / `.claude/skills`) by the client at request time.
- * Only frontmatter + the absolute SKILL.md path are carried; the SKILL.md
- * body and directory tree are loaded on demand at activation time via the
- * readFile / listFiles tools.
- */
-export interface ProjectSkillMeta {
-  /** Skill description from SKILL.md frontmatter. */
-  description?: string;
-  /** Skill name from frontmatter (falls back to the directory name). */
-  name: string;
-  /** Absolute path to the skill's SKILL.md on the device filesystem. */
-  path: string;
-}
-
-/**
  * Parameters for execAgent - execute a single Agent
  * Either agentId or slug must be provided
  */
@@ -141,13 +126,6 @@ export interface ExecAgentParams {
    * sub-tree back to its root.
    */
   parentOperationId?: string;
-  /**
-   * Project-level skills discovered on the device filesystem
-   * (`.agents/skills` / `.claude/skills`) at request time. Surfaced in the
-   * `<available_skills>` list and loaded on demand via the readFile tool.
-   * Only applied when a device is active for this run.
-   */
-  projectSkills?: ProjectSkillMeta[];
   /** The user input/prompt */
   prompt: string;
   /** Override the agent's default provider */
@@ -287,6 +265,14 @@ export interface ExecSubAgentTaskParams {
   parentMessageId: string;
   /** Parent operation ID for dispatching callAgent hooks */
   parentOperationId?: string;
+  /**
+   * When true, register the completion bridge that backfills the parent's
+   * placeholder tool message with this sub-agent's result and resumes the
+   * parked parent op (`waiting_for_async_tool` → running). Used by the server
+   * `callSubAgent` deferred-tool path; left false for the legacy fire-and-forget
+   * task dispatch.
+   */
+  resumeParentOnComplete?: boolean;
   /** Timeout in milliseconds (optional) */
   timeout?: number;
   /** Task title (shown in UI, used as thread title) */

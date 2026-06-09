@@ -8,6 +8,7 @@ import color from './color';
 import common from './common';
 import components from './components';
 import desktopOnboarding from './desktop-onboarding';
+import device from './device';
 import discover from './discover';
 import editor from './editor';
 import electron from './electron';
@@ -45,6 +46,7 @@ import thread from './thread';
 import tool from './tool';
 import topic from './topic';
 import ui from './ui';
+import verify from './verify';
 import video from './video';
 import welcome from './welcome';
 
@@ -59,6 +61,7 @@ const resources = {
   common,
   components,
   'desktop-onboarding': desktopOnboarding,
+  device,
   discover,
   editor,
   electron,
@@ -96,6 +99,7 @@ const resources = {
   tool,
   topic,
   ui,
+  verify,
   video,
   welcome,
 } as const;

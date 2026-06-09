@@ -5,7 +5,7 @@ import {
 
 import { FileService } from '@/server/services/file';
 import { MarketService } from '@/server/services/market';
-import { ServerSandboxService } from '@/server/services/sandbox';
+import { createSandboxService } from '@/server/services/sandbox';
 
 import { type ServerRuntimeRegistration } from './types';
 
@@ -25,9 +25,10 @@ export const cloudSandboxRuntime: ServerRuntimeRegistration = {
 
     const marketService = new MarketService({ userInfo: { userId: context.userId } });
     const fileService = new FileService(context.serverDB, context.userId);
-    const sandboxService = new ServerSandboxService({
+    const sandboxService = createSandboxService({
       fileService,
       marketService,
+      serverDB: context.serverDB,
       topicId: context.topicId,
       userId: context.userId,
     });

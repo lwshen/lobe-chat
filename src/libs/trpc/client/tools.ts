@@ -2,7 +2,6 @@ import { createTRPCClient, httpBatchLink, type TRPCLink } from '@trpc/client';
 import { observable } from '@trpc/server/observable';
 import superjson from 'superjson';
 
-import { withElectronProtocolIfElectron } from '@/const/protocol';
 import { type ToolsRouter } from '@/server/routers/tools';
 
 // 401 error debouncing for market auth
@@ -30,16 +29,25 @@ const errorHandlingLink: TRPCLink<ToolsRouter> = () => {
           // UNAUTHORIZED tRPC code maps to HTTP 401
           const is401 = status === 401 || code === 'UNAUTHORIZED';
           if (is401 && op.path.startsWith('market.')) {
-            const now = Date.now();
-            if (now - lastMarket401Time > MIN_401_INTERVAL) {
-              lastMarket401Time = now;
-              console.info('[toolsClient] Emitting market-unauthorized event for path:', op.path);
-              // Emit event for MarketAuthProvider to handle
-              const { marketAuthEvents } = await import('@/layout/AuthProvider/MarketAuth/events');
-              marketAuthEvents.emit('market-unauthorized', {
-                path: op.path,
-                timestamp: now,
-              });
+            const { getUserStoreState } = await import('@/store/user/store');
+            // Without a LobeChat session a market.* 401 is not a Market auth
+            // issue — let it bubble instead of triggering the auth modal
+            if (getUserStoreState().isSignedIn) {
+              const now = Date.now();
+              if (now - lastMarket401Time > MIN_401_INTERVAL) {
+                lastMarket401Time = now;
+                console.info('[toolsClient] Emitting market-unauthorized event for path:', op.path);
+                // Emit event for MarketAuthProvider to handle
+                const { marketAuthEvents } =
+                  await import('@/layout/AuthProvider/MarketAuth/events');
+                const { pathToMarketAuthScene } =
+                  await import('@/layout/AuthProvider/MarketAuth/scenes');
+                marketAuthEvents.emit('market-unauthorized', {
+                  path: op.path,
+                  scene: pathToMarketAuthScene(op.path),
+                  timestamp: now,
+                });
+              }
             }
           }
 
@@ -62,7 +70,7 @@ export const toolsClient = createTRPCClient<ToolsRouter>({
       },
       maxURLLength: 2083,
       transformer: superjson,
-      url: withElectronProtocolIfElectron('/trpc/tools'),
+      url: '/trpc/tools',
     }),
   ],
 });

@@ -35,8 +35,10 @@ import type {
   ExecGroupAgentResult,
   ExecSubAgentTaskParams,
   ExecSubAgentTaskResult,
+  LobeAgentAgencyConfig,
   MessagePluginItem,
   UserInterventionConfig,
+  WorkspaceInitResult,
 } from '@lobechat/types';
 import { RequestTrigger, ThreadStatus, ThreadType } from '@lobechat/types';
 import { nanoid } from '@lobechat/utils';
@@ -46,6 +48,8 @@ import { AgentModel } from '@/database/models/agent';
 import { AgentOperationModel } from '@/database/models/agentOperation';
 import { AgentSkillModel } from '@/database/models/agentSkill';
 import { AiModelModel } from '@/database/models/aiModel';
+import { ConnectorModel } from '@/database/models/connector';
+import { ConnectorToolModel } from '@/database/models/connectorTool';
 import { DeviceModel } from '@/database/models/device';
 import { FileModel } from '@/database/models/file';
 import { MessageModel } from '@/database/models/message';
@@ -57,7 +61,9 @@ import { UserModel } from '@/database/models/user';
 import { UserPersonaModel } from '@/database/models/userMemory/persona';
 import { toolsEnv } from '@/envs/tools';
 import { shouldEnableBuiltinSkill } from '@/helpers/skillFilters';
+import { buildConnectorManifests } from '@/libs/mcp/buildConnectorManifests';
 import { signOperationJwt, signUserJWT } from '@/libs/trpc/utils/internalJwt';
+import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
 import type { EvalContext, ServerAgentToolsContext } from '@/server/modules/Mecha';
 import { createServerAgentToolsEngine } from '@/server/modules/Mecha';
 import type { ServerUserMemoryConfig } from '@/server/modules/Mecha/ContextEngineering/types';
@@ -76,6 +82,7 @@ import {
   resolveAgentSelfIterationCapability,
 } from '@/server/services/agentSignal/featureGate';
 import { shouldSuppressSignal } from '@/server/services/agentSignal/suppressSignal';
+import { deviceGateway } from '@/server/services/deviceGateway';
 import { DocumentService } from '@/server/services/document';
 import { FileService } from '@/server/services/file';
 import { resolveAttachmentsByFileIds } from '@/server/services/file/resolveAttachments';
@@ -83,12 +90,12 @@ import { HeterogeneousAgentService } from '@/server/services/heterogeneousAgent'
 import type { ConversationHistoryEntry } from '@/server/services/heterogeneousAgent/cloudHeteroContext';
 import { KlavisService } from '@/server/services/klavis';
 import { MarketService } from '@/server/services/market';
-import { deviceProxy } from '@/server/services/toolExecution/deviceProxy';
 import { markdownToTxt } from '@/utils/markdownToTxt';
 
 import { resolveDeviceAccessPolicy } from './deviceAccessPolicy';
 import { buildAllowedBuiltinTools, isDeviceToolIdentifier } from './deviceToolRegistry';
 import { ingestAttachment } from './ingestAttachment';
+import { isWorkspaceCacheFresh, upsertWorkspaceScan } from './workspaceInitCache';
 
 const log = debug('lobe-server:ai-agent-service');
 
@@ -214,6 +221,15 @@ interface InternalExecAgentParams extends ExecAgentParams {
    * Defaults to true. Set to false for non-streaming scenarios (e.g., bot integrations).
    */
   stream?: boolean;
+  /**
+   * Run the turn off existing topic history without injecting a new user message
+   * (no user-message row, no Agent Signal source event). The agent responds to
+   * whatever the context engine surfaces as the latest turn. Used by auto-repair,
+   * where the failure feedback already lives on the verify card in history.
+   * `prompt` is still used for the operation title / logs. Unlike `resume`, this
+   * starts a fresh operation and skips the resume-specific validation.
+   */
+  suppressUserMessage?: boolean;
   /** Task ID that triggered this execution (if trigger is 'task') */
   taskId?: string;
   /**
@@ -246,6 +262,8 @@ export class AiAgentService {
   private readonly agentModel: AgentModel;
   private readonly agentService: AgentService;
   private readonly messageModel: MessageModel;
+  private readonly connectorModel: ConnectorModel;
+  private readonly connectorToolModel: ConnectorToolModel;
   private readonly pluginModel: PluginModel;
   private readonly taskModel: TaskModel;
   private readonly threadModel: ThreadModel;
@@ -265,6 +283,8 @@ export class AiAgentService {
     this.agentModel = new AgentModel(db, userId);
     this.agentService = new AgentService(db, userId);
     this.messageModel = new MessageModel(db, userId);
+    this.connectorModel = new ConnectorModel(db, userId);
+    this.connectorToolModel = new ConnectorToolModel(db, userId);
     this.pluginModel = new PluginModel(db, userId);
     this.taskModel = new TaskModel(db, userId);
     this.threadModel = new ThreadModel(db, userId);
@@ -286,6 +306,78 @@ export class AiAgentService {
     // operation runtimes store this value in FK-backed records.
     const task = await this.taskModel.resolve(idOrIdentifier);
     return task?.id;
+  }
+
+  /**
+   * Resolve the "workspace init" scan (project skills + AGENTS.md) for a run
+   * bound to a device's project directory. Reads the cache on
+   * `devices.workingDirs[].workspace`, reusing it within {@link WORKSPACE_INIT_TTL_MS};
+   * otherwise re-scans the device in one round-trip and writes the result back.
+   *
+   * Gated on `activeDeviceId` — without an online device there is nothing to
+   * scan and no current working directory to key the cache on. The web UI reads
+   * the same persisted `workingDirs` directly, so it can still render a last-known
+   * scan even while the device is offline.
+   */
+  private async resolveWorkspaceInit(params: {
+    activeDeviceId: string | undefined;
+    agencyConfig?: LobeAgentAgencyConfig;
+    topicId: string;
+  }): Promise<WorkspaceInitResult> {
+    const empty: WorkspaceInitResult = { instructions: [], skills: [] };
+    const { activeDeviceId, agencyConfig, topicId } = params;
+    if (!activeDeviceId) return empty;
+
+    try {
+      const deviceModel = new DeviceModel(this.db, this.userId);
+      const device = await deviceModel.findByDeviceId(activeDeviceId);
+      if (!device) return empty;
+
+      // The bound project root (unified precedence, mirrors hetero dispatch):
+      //   topic override > agent's per-device choice > device default.
+      // This is the directory we scan.
+      const topic = await this.topicModel.findById(topicId);
+      const boundCwd =
+        topic?.metadata?.workingDirectory ||
+        agencyConfig?.workingDirByDevice?.[activeDeviceId] ||
+        device.defaultCwd ||
+        undefined;
+      if (!boundCwd) return empty;
+
+      const workingDirs = device.workingDirs ?? [];
+      const cached = workingDirs.find((dir) => dir.path === boundCwd);
+
+      if (isWorkspaceCacheFresh(cached, Date.now()) && cached?.workspace) {
+        log('execAgent: reusing cached workspace init for %s', boundCwd);
+        return cached.workspace;
+      }
+
+      const scanned = await deviceGateway.initWorkspace({
+        deviceId: activeDeviceId,
+        scope: boundCwd,
+        userId: this.userId,
+      });
+      if (!scanned) {
+        // Scan failed (offline mid-run / parse error). Fall back to a stale
+        // cache rather than dropping the project's skills + instructions.
+        if (cached?.workspace) {
+          log('execAgent: workspace init scan failed, using stale cache for %s', boundCwd);
+          return cached.workspace;
+        }
+        return empty;
+      }
+
+      // Persist the fresh scan back onto `workingDirs` (update in place or prepend
+      // a new MRU entry), keeping the JSONB payload bounded.
+      const updated = upsertWorkspaceScan(workingDirs, boundCwd, scanned, Date.now());
+      await deviceModel.update(activeDeviceId, { workingDirs: updated });
+      log('execAgent: scanned and cached workspace init for %s', boundCwd);
+
+      return scanned;
+    } catch (error) {
+      log('execAgent: resolveWorkspaceInit failed: %O', error);
+      return empty;
+    }
   }
 
   /**
@@ -338,6 +430,7 @@ export class AiAgentService {
       parentOperationId,
       resume,
       resumeApproval,
+      suppressUserMessage,
     } = params;
 
     // Validate that either agentId or slug is provided
@@ -402,6 +495,15 @@ export class AiAgentService {
 
     // Use actual agent ID from config for subsequent operations
     const resolvedAgentId = agentConfig.id;
+
+    // Persistence-attribution agent id. Background Agent Signal runs (memory /
+    // skill / self-reflection) execute under a builtin slug, so `resolvedAgentId`
+    // is the builtin agent — but the run's persisted messages, like its operation
+    // row (createOperation appContext.agentId) and receipts, must attribute to the
+    // reviewed *user* agent carried on `marker.agentId`. Ordinary runs (no marker)
+    // fall back to the executing agent. Tools / systemRole / skills / agent
+    // documents stay keyed on `resolvedAgentId`.
+    const persistAgentId = appContext?.agentSignal?.agentId ?? resolvedAgentId;
 
     // Apply per-call model/provider overrides (e.g. from task.config)
     if (modelOverride) agentConfig.model = modelOverride;
@@ -511,6 +613,12 @@ export class AiAgentService {
     // API allows resumeApproval alone — fold both into a single effective
     // flag so downstream resume branches don't need to know about approval.
     const effectiveResume = resume || !!resumeApproval;
+
+    // Both resume and suppressUserMessage run the turn off existing history
+    // instead of appending a new user message — share the message-construction
+    // branches below. Resume-specific validation/approval stays gated on
+    // `effectiveResume` only.
+    const runFromHistory = effectiveResume || !!suppressUserMessage;
 
     if (effectiveResume) {
       if (!parentMessageId) {
@@ -688,7 +796,7 @@ export class AiAgentService {
       const operationId = nanoid();
 
       // Create user message so the conversation is visible in the UI immediately.
-      const userMsg = effectiveResume
+      const userMsg = runFromHistory
         ? undefined
         : await this.messageModel.create({
             agentId: resolvedAgentId,
@@ -699,14 +807,21 @@ export class AiAgentService {
           });
 
       // Create an assistant message placeholder (shows spinner in the UI).
-      // For remote hetero agents (openclaw/hermes), override provider with the hetero type
-      // so the frontend can identify the platform and display the correct name in the model tag.
+      // Use the hetero type as the provider so the frontend can identify the
+      // platform and render the correct name in the model tag — for ALL hetero
+      // agents, not just remote ones. The agent's configured chat model/provider
+      // (e.g. deepseek) is meaningless for a CLI run: the real model is reported
+      // by the CLI via `stream_start` / `turn_metadata` and backfilled by
+      // `HeterogeneousPersistenceHandler`. Seeding the placeholder with the agent
+      // model leaked it into the model tag (and got re-applied at terminal) on
+      // the device / sandbox path; mirror the client (`conversationLifecycle`),
+      // which sets only the provider and leaves the model empty until the CLI
+      // reports it.
       const assistantMsg = await this.messageModel.create({
         agentId: resolvedAgentId,
         content: LOADING_FLAT,
-        model,
         parentId: parentMessageId ?? userMsg?.id,
-        provider: isRemoteHetero ? heteroType : provider,
+        provider: heteroType,
         role: 'assistant',
         threadId: appContext?.threadId ?? undefined,
         topicId,
@@ -869,7 +984,7 @@ export class AiAgentService {
 
         // lh connect only handles tool_call_request (not agent_run_request),
         // so we use executeToolCall with the runHeteroTask tool instead of dispatchAgentRun.
-        const result = await deviceProxy.executeToolCall(
+        const result = await deviceGateway.executeToolCall(
           { deviceId: remoteDeviceId, userId: this.userId },
           {
             apiName: 'runHeteroTask',
@@ -964,16 +1079,18 @@ export class AiAgentService {
           // Resolve the working directory for the run: a topic-level override
           // wins, else the device's user-configured defaultCwd. The device row
           // lives in the DB (the gateway only knows live connections), so read
-          // it directly rather than via deviceProxy.
+          // it directly rather than via deviceGateway.
           const boundDevice = await new DeviceModel(this.db, this.userId).findByDeviceId(
             dispatchDeviceId,
           );
-          // Prefer the topic's own pinned cwd — an existing topic carries it in
-          // `metadata.workingDirectory`, whereas `initialTopicMetadata` is only
-          // populated for a brand-new topic. Fall back to the device default.
+          // Working-directory precedence (unified across client + server):
+          //   topic override > agent's per-device choice > device default.
+          // An existing topic carries its pinned cwd in `metadata.workingDirectory`;
+          // `initialTopicMetadata` is only populated for a brand-new topic.
           const deviceCwd =
             topic?.metadata?.workingDirectory ||
             appContext?.initialTopicMetadata?.workingDirectory ||
+            agentConfig.agencyConfig?.workingDirByDevice?.[dispatchDeviceId] ||
             boundDevice?.defaultCwd ||
             undefined;
 
@@ -989,7 +1106,7 @@ export class AiAgentService {
             cwd: deviceCwd,
           });
 
-          const result = await deviceProxy.dispatchAgentRun({
+          const result = await deviceGateway.dispatchAgentRun({
             ...heteroParams,
             cwd: deviceCwd,
             deviceId: dispatchDeviceId,
@@ -1116,6 +1233,7 @@ export class AiAgentService {
     // These are needed outside the tools block (for agent management context, skill engine, etc.)
     let lobehubSkillManifests: LobeToolManifest[] = [];
     let klavisManifests: LobeToolManifest[] = [];
+    let connectorManifests: ReturnType<typeof buildConnectorManifests> = [];
     let agentPlugins: string[] = [...(agentConfig?.plugins ?? []), ...(additionalPluginIds || [])];
 
     // Model metadata is needed both for tool support checks and agent-management context.
@@ -1164,6 +1282,52 @@ export class AiAgentService {
       const installedPlugins = await this.pluginModel.query();
       log('execAgent: got %d installed plugins', installedPlugins.length);
 
+      // 5a-1. Resolve connectors — connector identifier takes priority over plugin.
+      // Credentials (OAuth tokens) are encrypted at rest, so decrypt them with a
+      // gatekeeper; otherwise buildConnectorManifests gets no auth and tool calls 401.
+      let connectorGateKeeper: KeyVaultsGateKeeper | undefined;
+      try {
+        connectorGateKeeper = await KeyVaultsGateKeeper.initWithEnvKey();
+      } catch (err) {
+        log('execAgent: failed to init gatekeeper for connector credentials: %O', err);
+      }
+      const connectors =
+        agentPlugins.length > 0
+          ? await this.connectorModel.queryByIdentifiers(agentPlugins, connectorGateKeeper)
+          : [];
+
+      // Only connectors WITH a real MCP endpoint (mcpServerUrl or stdio) can replace plugins in the
+      // manifest. Connectors WITHOUT an endpoint (e.g. Lobehub/Klavis OAuth skills synced via
+      // syncToolsFromClient) must continue using their original plugin executor path — otherwise
+      // after humanIntervention approval the runtime tries to call mcpServerUrl='' and returns empty.
+      const connectorsMcp = connectors.filter(
+        (c) => c.mcpServerUrl || c.mcpConnectionType === 'stdio',
+      );
+
+      // Fetch ALL tools for all real-MCP connectors (including disabled tools) so that
+      // buildConnectorManifests can show blocking descriptions for disabled tools.
+      // The runtime hot-path still uses queryByConnectorIds (non-disabled only) elsewhere.
+      const connectorTools =
+        connectorsMcp.length > 0
+          ? await this.connectorToolModel.queryAllByConnectorIds(connectorsMcp.map((c) => c.id))
+          : [];
+
+      connectorManifests = buildConnectorManifests(connectorsMcp, connectorTools);
+
+      // Only connectors that ACTUALLY produced a manifest (enabled + with synced
+      // tools) replace a same-named plugin. Deriving the set from connectorsMcp
+      // instead would let a disabled / not-yet-synced connector evict the plugin
+      // while contributing no tools — leaving the runtime with nothing to call.
+      const connectorIdentifierSet = new Set(connectorManifests.map((m) => m.identifier));
+
+      // Filter out plugin entries that are now handled by real MCP connectors.
+      // `let` because community-MCP plugins may be patched with connector
+      // permissions below (their connector row has no endpoint, so they stay here).
+      let pluginsWithoutConnectors = installedPlugins.filter(
+        (p) => !connectorIdentifierSet.has(p.identifier),
+      );
+      log('execAgent: got %d connector manifests', connectorManifests.length);
+
       // 5b. Get model abilities from model-bank for function calling support check
       const isModelSupportToolUse = (m: string, p: string) => {
         const info = builtinModels.find((item) => item.id === m && item.providerId === p);
@@ -1186,6 +1350,75 @@ export class AiAgentService {
       }
       log('execAgent: got %d klavis manifests', klavisManifests.length);
 
+      // 5d-1. Patch Lobehub/Klavis manifests AND community-MCP plugin manifests
+      // with connector tool permissions. This enables needs_approval (→
+      // humanIntervention: 'required') and disabled (→ blocking description) for
+      // any tool managed via the connector system but executed through a
+      // non-connector path (Lobehub/Klavis skills, community MCP plugins).
+      // The 'disabled' hard-block is already enforced universally in
+      // ToolExecutionService; this surfaces the permission to the model too.
+      if (
+        lobehubSkillManifests.length > 0 ||
+        klavisManifests.length > 0 ||
+        pluginsWithoutConnectors.length > 0
+      ) {
+        try {
+          const { patchManifestWithPermissions } =
+            await import('@/libs/mcp/connectorPermissionCheck');
+          const { ConnectorToolModel } = await import('@/database/models/connectorTool');
+          const allIdentifiers = [
+            ...lobehubSkillManifests.map((m) => m.identifier),
+            ...klavisManifests.map((m) => m.identifier),
+            ...pluginsWithoutConnectors.map((p) => p.identifier),
+          ];
+          const connectorEntries =
+            allIdentifiers.length > 0
+              ? await this.connectorModel.queryByIdentifiers(allIdentifiers)
+              : [];
+
+          if (connectorEntries.length > 0) {
+            const toolModel = new ConnectorToolModel(this.db, this.userId);
+            const connectorToolsMap = new Map<string, Map<string, string>>();
+            await Promise.all(
+              connectorEntries.map(async (c) => {
+                const tools = await toolModel.queryByConnector(c.id);
+                const perms = new Map(tools.map((t) => [t.toolName, t.permission]));
+                connectorToolsMap.set(c.identifier, perms);
+              }),
+            );
+
+            lobehubSkillManifests = lobehubSkillManifests.map((m) => {
+              const perms = connectorToolsMap.get(m.identifier);
+              return perms && perms.size > 0
+                ? (patchManifestWithPermissions(m as any, perms as any) as any)
+                : m;
+            });
+
+            klavisManifests = klavisManifests.map((m) => {
+              const perms = connectorToolsMap.get(m.identifier);
+              return perms && perms.size > 0
+                ? (patchManifestWithPermissions(m as any, perms as any) as any)
+                : m;
+            });
+
+            // Community-MCP plugins execute via the plugin path, so patch their
+            // manifest in place (the connector row holds the user's permissions).
+            pluginsWithoutConnectors = pluginsWithoutConnectors.map((p) => {
+              const perms = connectorToolsMap.get(p.identifier);
+              if (perms && perms.size > 0 && (p as any).manifest?.api) {
+                return {
+                  ...p,
+                  manifest: patchManifestWithPermissions((p as any).manifest, perms as any) as any,
+                };
+              }
+              return p;
+            });
+          }
+        } catch (err) {
+          log('execAgent: failed to patch manifests with connector permissions: %O', err);
+        }
+      }
+
       await throwIfExecutionAborted('tool discovery');
 
       // 5e. Create tools using Server AgentToolsEngine
@@ -1195,8 +1428,7 @@ export class AiAgentService {
         ) ?? false;
 
       try {
-        const docs = await this.agentDocumentsService.getAgentDocuments(resolvedAgentId);
-        hasAgentDocuments = docs.length > 0;
+        hasAgentDocuments = await this.agentDocumentsService.hasDocuments(resolvedAgentId);
       } catch {
         // Agent documents check is non-critical
       }
@@ -1204,12 +1436,12 @@ export class AiAgentService {
       log('execAgent: isBotConversation=%s', isBotConversation);
 
       // Build device context for ToolsEngine enableChecker
-      const gatewayConfigured = deviceProxy.isConfigured;
+      const gatewayConfigured = deviceGateway.isConfigured;
       const agentBoundDeviceId = agentConfig.agencyConfig?.boundDeviceId;
       const boundDeviceId = topicBoundDeviceId || agentBoundDeviceId;
       if (gatewayConfigured) {
         try {
-          onlineDevices = await deviceProxy.queryDeviceList(this.userId);
+          onlineDevices = await deviceGateway.queryDeviceList(this.userId);
           log('execAgent: found %d online device(s)', onlineDevices.length);
         } catch (error) {
           log('execAgent: failed to query device list: %O', error);
@@ -1218,7 +1450,7 @@ export class AiAgentService {
       const deviceOnline = onlineDevices.length > 0;
 
       const toolsContext: ServerAgentToolsContext = {
-        installedPlugins,
+        installedPlugins: pluginsWithoutConnectors,
         isModelSupportToolUse,
       };
 
@@ -1298,7 +1530,7 @@ export class AiAgentService {
               : undefined;
 
       const toolsEngine = createServerAgentToolsEngine(toolsContext, {
-        additionalManifests: [...lobehubSkillManifests, ...klavisManifests],
+        additionalManifests: [...lobehubSkillManifests, ...klavisManifests, ...connectorManifests],
         agentConfig: {
           chatConfig: agentConfig.chatConfig ?? undefined,
           plugins: agentPlugins,
@@ -1330,6 +1562,8 @@ export class AiAgentService {
           // Include LobeHub Skills and Klavis tools so they are passed to generateToolsDetailed
           ...lobehubSkillManifests.map((m) => m.identifier),
           ...klavisManifests.map((m) => m.identifier),
+          // Connector manifests are also injected as additionalManifests
+          ...connectorManifests.map((m) => m.identifier),
         ]),
       ];
       log('execAgent: agent configured plugins: %O', pluginIds);
@@ -1419,6 +1653,11 @@ export class AiAgentService {
         for (const plugin of installedPlugins) {
           if (plugin.customParams?.mcp?.type === 'stdio' && manifestMap.has(plugin.identifier)) {
             toolExecutorMap[plugin.identifier] = 'client';
+          }
+        }
+        for (const connector of connectorsMcp) {
+          if (connector.mcpConnectionType === 'stdio' && manifestMap.has(connector.identifier)) {
+            toolExecutorMap[connector.identifier] = 'client';
           }
         }
       }
@@ -1515,7 +1754,7 @@ export class AiAgentService {
     ): Promise<Record<string, string>> => {
       if (!deviceId) return {};
       try {
-        const systemInfo = await deviceProxy.queryDeviceSystemInfo(this.userId, deviceId);
+        const systemInfo = await deviceGateway.queryDeviceSystemInfo(this.userId, deviceId);
         if (!systemInfo) return {};
         const device = onlineDevices.find((d) => d.deviceId === deviceId);
         log('execAgent: fetched device system info for %s', deviceId);
@@ -1659,6 +1898,13 @@ export class AiAgentService {
           identifier: manifest.identifier,
           name: manifest.meta?.title || manifest.identifier,
           type: 'klavis' as const,
+        })),
+        // Custom connectors (user-added MCP servers)
+        ...connectorManifests.map((manifest) => ({
+          description: manifest.meta?.description,
+          identifier: manifest.identifier,
+          name: manifest.meta?.title || manifest.identifier,
+          type: 'custom' as const,
         })),
       ];
 
@@ -1850,10 +2096,10 @@ export class AiAgentService {
 
     // 13. Create user message in database
     // Include threadId if provided (for SubAgent task execution in isolated Thread)
-    const userMessageRecord = effectiveResume
+    const userMessageRecord = runFromHistory
       ? undefined
       : await this.messageModel.create({
-          agentId: resolvedAgentId,
+          agentId: persistAgentId,
           content: prompt,
           files: fileIds,
           metadata: requestTriggerMetadata,
@@ -1899,7 +2145,7 @@ export class AiAgentService {
     // 14. Create assistant message placeholder in database
     // Include threadId if provided (for SubAgent task execution in isolated Thread)
     const assistantMessageRecord = await this.messageModel.create({
-      agentId: resolvedAgentId,
+      agentId: persistAgentId,
       content: LOADING_FLAT,
       model,
       parentId: parentMessageId ?? userMessageRecord?.id,
@@ -1932,7 +2178,7 @@ export class AiAgentService {
     };
 
     // Combine history messages with user message
-    const allMessages = effectiveResume ? historyMessages : [...historyMessages, userMessage];
+    const allMessages = runFromHistory ? historyMessages : [...historyMessages, userMessage];
 
     log('execAgent: prepared evalContext for executor');
 
@@ -1948,7 +2194,7 @@ export class AiAgentService {
         // Pass assistant message ID so agent runtime knows which message to update
         assistantMessageId: assistantMessageRecord.id,
         isFirstMessage: true,
-        message: effectiveResume ? [{ content: '' }] : [{ content: prompt }],
+        message: runFromHistory ? [{ content: '' }] : [{ content: prompt }],
         // Pass user message ID as parentMessageId for reference
         parentMessageId: parentMessageId ?? userMessageRecord?.id ?? '',
         // Include tools for initial LLM call
@@ -2112,34 +2358,54 @@ export class AiAgentService {
         name: skill.name,
       }));
 
-      // Project skills are filesystem SKILL.md discovered on the device. Their
-      // presence in `params.projectSkills` is itself proof that a client just
-      // scanned the working directory, so we surface them in
-      // `<available_skills>` unconditionally — decoupled from `activeDeviceId`
-      // (a routing decision for `LocalSystemManifest` injection that can
-      // legitimately be `undefined` for multi-device-no-bind or
-      // device-just-went-offline cases). Whether SKILL.md can actually be read
-      // at activation time is re-gated at the executor in
-      // `serverRuntimes/skills.ts` — there `deviceFileAccess` is only built
-      // when `activeDeviceId` resolves, and a missing reader naturally fails
-      // the `activateSkill` call rather than silently hiding the option.
-      // Only `location` (absolute SKILL.md path) flows through; the directory
-      // tree is enumerated lazily at activation time via
-      // `local-system.listFiles`, keeping the op-param payload small.
-      const projectMetas =
-        params.projectSkills?.map((s) => ({
-          description: s.description ?? '',
-          identifier: `project:${s.name}`,
-          location: s.path,
-          name: s.name,
-          source: 'project' as const,
-        })) ?? [];
+      // Project skills + the root AGENTS.md are discovered server-side by
+      // scanning the device's bound project directory ("workspace init"), cached
+      // on `devices.workingDirs` and reused within the TTL. Skills surface in
+      // `<available_skills>` (metadata only — SKILL.md bodies are read lazily at
+      // activation via `local-system` readFile, which `serverRuntimes/skills.ts`
+      // re-gates on `activeDeviceId`). Only `location` (the absolute SKILL.md
+      // path) flows through; the directory tree is enumerated lazily, keeping the
+      // op-param payload small.
+      const workspaceInit = await this.resolveWorkspaceInit({
+        activeDeviceId,
+        agencyConfig: agentConfig.agencyConfig ?? undefined,
+        topicId,
+      });
 
-      if (params.projectSkills?.length) {
+      const projectMetas = workspaceInit.skills.map((s) => ({
+        description: s.description ?? '',
+        identifier: `project:${s.name}`,
+        location: s.path,
+        name: s.name,
+        source: 'project' as const,
+      }));
+
+      if (projectMetas.length) {
         log(
-          'execAgent: projectSkills merged: %d (activeDeviceId=%s)',
+          'execAgent: workspace skills merged: %d (activeDeviceId=%s)',
           projectMetas.length,
           activeDeviceId ?? 'none',
+        );
+      }
+
+      // Inject the project-root agent instructions (AGENTS.md / CLAUDE.md) as
+      // trailing blocks on the system role — after the agent's persona and any
+      // page/task/additional instructions. `agentConfig` is read by
+      // `createOperation` below, so appending here still reaches the LLM.
+      if (workspaceInit.instructions.length) {
+        const block = workspaceInit.instructions
+          .map(
+            ({ content, source }) =>
+              `<project_instructions source="${source}">\n${content}\n</project_instructions>`,
+          )
+          .join('\n\n');
+        agentConfig.systemRole = agentConfig.systemRole
+          ? `${agentConfig.systemRole}\n\n${block}`
+          : block;
+        log(
+          'execAgent: injected %d project instruction file(s): %s',
+          workspaceInit.instructions.length,
+          workspaceInit.instructions.map((i) => i.source).join(', '),
         );
       }
 
@@ -2400,8 +2666,16 @@ export class AiAgentService {
    * 3. Store operationId in Thread metadata
    */
   async execSubAgentTask(params: ExecSubAgentTaskParams): Promise<ExecSubAgentTaskResult> {
-    const { groupId, topicId, parentMessageId, agentId, instruction, title, parentOperationId } =
-      params;
+    const {
+      groupId,
+      topicId,
+      parentMessageId,
+      agentId,
+      instruction,
+      title,
+      parentOperationId,
+      resumeParentOnComplete,
+    } = params;
 
     log(
       'execSubAgentTask: agentId=%s, groupId=%s, topicId=%s, instruction=%s',
@@ -2448,6 +2722,17 @@ export class AiAgentService {
 
     // 3. Create hooks for updating Thread metadata and task message
     const threadHooks = this.createThreadHooks(thread.id, startedAt, parentMessageId);
+    // For the deferred-tool path, also register the completion bridge that
+    // backfills the parent's placeholder tool message and resumes the parked
+    // parent op once the whole batch is done. Registered last so its
+    // tool-message backfill (content + pluginState) is the final write.
+    const hooks =
+      resumeParentOnComplete && parentOperationId
+        ? [
+            ...threadHooks,
+            this.createSubAgentBridgeHook(parentOperationId, parentMessageId, thread.id),
+          ]
+        : threadHooks;
 
     // Inherit parent op's trigger so sub-agent rows stay attributable to the
     // original entry point (chat / bot / cli / eval / …). Lookup is best-effort
@@ -2471,7 +2756,7 @@ export class AiAgentService {
       agentId,
       appContext: { groupId, threadId: thread.id, topicId },
       autoStart: true,
-      hooks: threadHooks,
+      hooks,
       parentOperationId,
       prompt: instruction,
       trigger: inheritedTrigger,
@@ -2790,6 +3075,74 @@ export class AiAgentService {
   }
 
   /**
+   * Completion bridge for the server `callSubAgent` deferred-tool path.
+   *
+   * Fires on the sub-op's completion (success or failure). It:
+   *   1. Backfills the parent's placeholder tool message with the sub-agent's
+   *      final answer (success) or an error note (failure), plus pluginState so
+   *      the UI render can resolve the isolation thread.
+   *   2. Asks the runtime to resume the parent: barrier-check that every pending
+   *      tool in this turn is now fulfilled, atomically claim the resume (CAS),
+   *      and schedule the next parent step. Concurrent sibling completions that
+   *      lose the CAS are no-ops.
+   */
+  private createSubAgentBridgeHook(
+    parentOperationId: string,
+    toolMessageId: string,
+    threadId: string,
+  ): AgentHook {
+    return {
+      handler: async (event) => {
+        const finalState = event.finalState;
+        const failed = event.reason === 'error' || event.reason === 'interrupted';
+
+        // 1. Backfill the placeholder tool message with the result
+        try {
+          const lastAssistant = finalState?.messages
+            ?.slice()
+            .reverse()
+            .find((m: { content?: string; role: string }) => m.role === 'assistant');
+
+          const content = failed
+            ? `Sub-agent did not complete (${event.reason}).`
+            : lastAssistant?.content || 'Sub-agent completed without a textual answer.';
+
+          await this.messageModel.updateToolMessage(toolMessageId, {
+            content,
+            pluginError: failed ? formatErrorForMetadata(finalState?.error) : undefined,
+            pluginState: {
+              model: finalState?.modelRuntimeConfig?.model,
+              status: failed ? 'error' : 'completed',
+              threadId,
+              totalToolCalls: finalState?.usage?.tools?.totalCalls,
+              totalTokens: this.calculateTotalTokens(finalState?.usage),
+            },
+          });
+        } catch (error) {
+          console.error(
+            'Sub-agent bridge: failed to backfill tool message %s: %O',
+            toolMessageId,
+            error,
+          );
+        }
+
+        // 2. Barrier + CAS + resume the parent op
+        try {
+          await this.agentRuntimeService.tryResumeParentFromAsyncTool({ parentOperationId });
+        } catch (error) {
+          console.error(
+            'Sub-agent bridge: failed to resume parent %s: %O',
+            parentOperationId,
+            error,
+          );
+        }
+      },
+      id: 'sub-agent-bridge',
+      type: 'onComplete' as const,
+    };
+  }
+
+  /**
    * Calculate total tokens from AgentState usage object
    * AgentState.usage is of type Usage from @lobechat/agent-runtime
    */
@@ -2851,7 +3204,7 @@ export class AiAgentService {
           runningOp.deviceId,
           taskId,
         );
-        await deviceProxy
+        await deviceGateway
           .executeToolCall(
             { deviceId: runningOp.deviceId, userId: this.userId },
             {
