@@ -265,6 +265,8 @@ export default {
     'For GPT-5.2 Pro series; controls reasoning intensity.',
   'providerModels.item.modelConfig.extendParams.options.gpt5_2ReasoningEffort.hint':
     'For GPT-5.2 series; controls reasoning intensity.',
+  'providerModels.item.modelConfig.extendParams.options.glm5_2ReasoningEffort.hint':
+    'For GLM-5.2; controls reasoning effort with High and Max levels.',
   'providerModels.item.modelConfig.extendParams.options.grok4_20ReasoningEffort.hint':
     'For Grok 4.20 series; controls reasoning intensity. Low/Medium uses 4 agents, High/XHigh uses 16 agents.',
   'providerModels.item.modelConfig.extendParams.options.grok4_3ReasoningEffort.hint':
@@ -323,6 +325,8 @@ export default {
   'providerModels.item.modelConfig.functionCall.extra':
     "This configuration will only enable the model's ability to use tools, allowing for the addition of tool-type skills. However, whether the model can truly use the tools depends entirely on the model itself; please test for usability on your own.",
   'providerModels.item.modelConfig.functionCall.title': 'Support for Tool Usage',
+  'providerModels.item.modelConfig.id.duplicate':
+    'A model with this ID already exists. Use a different model ID.',
   'providerModels.item.modelConfig.id.extra':
     'This cannot be modified after creation and will be used as the model ID when calling AI',
   'providerModels.item.modelConfig.id.placeholder':
