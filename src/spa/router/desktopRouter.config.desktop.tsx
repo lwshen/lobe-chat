@@ -2,6 +2,7 @@
 
 import {
   BrainCircuit,
+  Download,
   FilePenIcon,
   Home,
   Image,
@@ -36,6 +37,7 @@ import WorkspaceSlugSettingsLayout from '@/routes/(main)/[workspaceSlug]/setting
 import WorkspaceSlugSettingsApiKeyPage from '@/routes/(main)/[workspaceSlug]/settings/apikey';
 import WorkspaceSlugSettingsAuditLogPage from '@/routes/(main)/[workspaceSlug]/settings/audit-log';
 import WorkspaceSlugSettingsBillingPage from '@/routes/(main)/[workspaceSlug]/settings/billing';
+import WorkspaceSlugSettingsConnectorPage from '@/routes/(main)/[workspaceSlug]/settings/connector';
 import WorkspaceSlugSettingsCreditsPage from '@/routes/(main)/[workspaceSlug]/settings/credits';
 import WorkspaceSlugSettingsCredsPage from '@/routes/(main)/[workspaceSlug]/settings/creds';
 import WorkspaceSlugSettingsDevicesPage from '@/routes/(main)/[workspaceSlug]/settings/devices';
@@ -88,6 +90,7 @@ import CommunityListSkillLayout from '@/routes/(main)/community/(list)/skill/_la
 import DevtoolsIndexPage from '@/routes/(main)/devtools';
 import DevtoolsLayout from '@/routes/(main)/devtools/_layout';
 import DevtoolsToolPage from '@/routes/(main)/devtools/[identifier]';
+import DownloadsPage from '@/routes/(main)/downloads';
 import EvalOverviewPage from '@/routes/(main)/eval';
 import EvalLayout from '@/routes/(main)/eval/_layout';
 import EvalHomeLayout from '@/routes/(main)/eval/(home)/_layout';
@@ -615,6 +618,14 @@ export const desktopRoutes: RouteObject[] = [
     children: [
       ...sharedMainAreaChildren,
 
+      // Downloads page (personal-only — never mirrored under /:workspaceSlug)
+      {
+        element: <DownloadsPage />,
+        errorElement: <ErrorBoundary />,
+        handle: { meta: routeMeta({ icon: Download, titleKey: 'navigation.downloads' }) },
+        path: 'downloads',
+      },
+
       // Settings routes (personal-only — never mirrored under /:workspaceSlug)
       {
         children: [
@@ -685,6 +696,7 @@ export const desktopRoutes: RouteObject[] = [
               // shell (sidebar + outlet) — they own their internal layout.
               { element: <WorkspaceSlugSettingsProviderPage />, path: 'provider' },
               { element: <WorkspaceSlugSettingsSkillPage />, path: 'skill' },
+              { element: <WorkspaceSlugSettingsConnectorPage />, path: 'connector' },
               // Padded tabs share a centered, max-width container layout.
               {
                 children: [
