@@ -441,7 +441,6 @@ export default {
   'messages.tokenDetails.outputText': 'Text Output',
   'messages.tokenDetails.outputTitle': 'Output Details',
   'messages.tokenDetails.reasoning': 'Deep Thinking',
-  'messages.tokenDetails.runCumulative': 'Run Total (all steps)',
   'messages.tokenDetails.speed.tps.title': 'TPS',
   'messages.tokenDetails.speed.tps.tooltip':
     'Tokens Per Second (TPS). This indicates the average speed of AI-generated content (Tokens/second), calculated from the moment the first Token is received.',
@@ -1158,7 +1157,6 @@ export default {
   'tokenDetails.title': 'Context Details',
   'tokenDetails.tools': 'Skill Settings',
   'tokenDetails.total': 'Total Available',
-  'tokenDetails.untracked': 'Untracked (tool calls, etc.)',
   'tokenDetails.used': 'Total Used',
   'tokenTag.overload': 'Exceeded Limit',
   'tokenTag.remained': 'Remaining',
@@ -1544,5 +1542,17 @@ export default {
   'internalLink.preview.agent': 'Agent',
   'internalLink.preview.document': 'Page',
   'internalLink.preview.task': 'Task',
+  'internalLink.preview.verify': 'Verification report',
+  'internalLink.preview.verifyCounts':
+    '{{passed}} passed · {{failed}} failed · {{uncertain}} uncertain',
+  'internalLink.preview.verifyStatus.delivered': 'Delivered',
+  'internalLink.preview.verifyStatus.errored': 'Error',
+  'internalLink.preview.verifyStatus.failed': 'Failed',
+  'internalLink.preview.verifyStatus.passed': 'Passed',
+  'internalLink.preview.verifyStatus.planned': 'Planned',
+  'internalLink.preview.verifyStatus.repairing': 'Repairing',
+  'internalLink.preview.verifyStatus.uncertain': 'Uncertain',
+  'internalLink.preview.verifyStatus.unverified': 'Unverified',
+  'internalLink.preview.verifyStatus.verifying': 'Verifying',
   'you': 'You',
 };
