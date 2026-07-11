@@ -36,6 +36,7 @@ export default {
   'agentDocument.emptyTitle': 'No document open',
   'agentDocument.linkCopied': 'Link copied',
   'agentDocument.openAsPage': 'Open as full page',
+  'internalLink.agent.open': 'Open agent',
   'agentProfile.files_one': '{{count}} file',
   'agentProfile.files_other': '{{count}} files',
   'agentProfile.knowledgeBases_one': '{{count}} library',
@@ -629,6 +630,10 @@ export default {
   'operation.execClientSubAgent': 'Running sub-agent',
   'operation.execHeterogeneousAgent': '{{name}} is running',
   'operation.heterogeneousAgentFallback': 'External agent',
+  'operation.streamRetry': '{{name}} upstream is busy ({{status}}), retrying',
+  'operation.streamRetry.unknownStatus': 'unknown status',
+  'operation.streamRetry.withAttempt':
+    '{{name}} upstream is busy ({{status}}), retrying {{attempt}}/{{maxAttempts}}',
   'operation.execServerAgentRuntime':
     'Task is running in the server. You are safe to leave this page',
   'operation.sendMessage': 'Sending message',
@@ -1518,5 +1523,8 @@ export default {
   'verifyConfig.verifierTypeDesc.agent': 'Spawn a sub-agent to investigate and judge',
   'verifyConfig.verifierTypeDesc.llm': 'Let an LLM judge the result',
   'verifyConfig.verifierTypeDesc.program': 'Run a deterministic script to check',
+  'internalLink.preview.agent': 'Agent',
+  'internalLink.preview.document': 'Page',
+  'internalLink.preview.task': 'Task',
   'you': 'You',
 };
