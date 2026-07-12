@@ -4,7 +4,11 @@ import type {
   AgentState,
   GeneralAgentConfig,
 } from '@lobechat/agent-runtime';
-import { GeneralChatAgent, GraphAgent } from '@lobechat/agent-runtime';
+import {
+  extractActivatedToolIdsFromMessages,
+  GeneralChatAgent,
+  GraphAgent,
+} from '@lobechat/agent-runtime';
 import { BUILTIN_AGENT_SLUGS, getAgentRuntimeConfig } from '@lobechat/builtin-agents';
 import { builtinSkills } from '@lobechat/builtin-skills';
 import { CloudSandboxManifest } from '@lobechat/builtin-tool-cloud-sandbox';
@@ -29,7 +33,7 @@ import type {
   ToolExecutor,
   ToolSource,
 } from '@lobechat/context-engine';
-import { SkillEngine } from '@lobechat/context-engine';
+import { SkillEngine, type ToolsEngine } from '@lobechat/context-engine';
 import type { LobeChatDatabase } from '@lobechat/database';
 import { isRemoteHeterogeneousType } from '@lobechat/heterogeneous-agents';
 import { buildTaskManagerDefaultsPrompt } from '@lobechat/prompts';
@@ -2238,6 +2242,7 @@ export class AiAgentService {
       enabledToolIds: [],
       tools: undefined,
     };
+    let toolsEngine: ToolsEngine | undefined;
     const toolManifestMap: Record<string, any> = {};
     const toolSourceMap: Record<string, ToolSource> = {};
     const toolExecutorMap: Record<string, ToolExecutor> = {};
@@ -2738,7 +2743,7 @@ export class AiAgentService {
       const activeComposioManifests = dropDisabledManifests(composioManifests);
       const activeConnectorManifests = dropDisabledManifests(connectorManifests);
 
-      const toolsEngine = createServerAgentToolsEngine(toolsContext, {
+      toolsEngine = createServerAgentToolsEngine(toolsContext, {
         additionalManifests: [
           ...activeLobehubSkillManifests,
           ...activeComposioManifests,
@@ -3049,7 +3054,14 @@ export class AiAgentService {
     ): Promise<Record<string, string>> => {
       if (!deviceId) return {};
       try {
-        const systemInfo = await deviceGateway.queryDeviceSystemInfo(this.userId, deviceId);
+        // Scope the gateway lookup to the principal that owns the connection:
+        // workspace devices need workspaceId; personal devices (including a
+        // workspace run routed to the caller's own machine) must not.
+        const systemInfo = await deviceGateway.queryDeviceSystemInfo(
+          this.userId,
+          deviceId,
+          activeDeviceScope === 'workspace' ? this.workspaceId : undefined,
+        );
         if (!systemInfo) return {};
         const device = onlineDevices.find((d) => d.deviceId === deviceId);
         log('execAgent: fetched device system info for %s', deviceId);
@@ -3295,6 +3307,20 @@ export class AiAgentService {
     // — it drives this turn but was never persisted (id is undefined).
     const allMessages =
       runFromHistory && !ephemeralUserMessage ? historyMessages : [...historyMessages, userMessage];
+
+    // Re-check historical activations against this run's tool-mode and model
+    // gates. manifestMap is intentionally broader for discovery and must not
+    // by itself authorize a tool in chat/custom mode or without function calls.
+    const historicalActivatedToolIds = extractActivatedToolIdsFromMessages(allMessages) ?? [];
+    const activatableToolIds = toolsEngine && historicalActivatedToolIds.length > 0
+      ? toolsEngine.generateToolsDetailed({
+          context: { isExplicitActivation: true },
+          model,
+          provider,
+          skipDefaultTools: true,
+          toolIds: historicalActivatedToolIds,
+        }).enabledToolIds
+      : [];
 
     log('execAgent: prepared evalContext for executor');
 
@@ -3692,6 +3718,7 @@ export class AiAgentService {
         queueRetryDelay,
         stream,
         toolSet: {
+          activatableToolIds,
           enabledToolIds: toolsResult.enabledToolIds,
           executorMap: toolExecutorMap,
           manifestMap: toolManifestMap,
