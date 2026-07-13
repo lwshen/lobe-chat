@@ -418,7 +418,16 @@ export default {
   'input.inputCompletionError.title': 'Input suggestions paused',
   'input.modelUnavailable':
     'The current model is no longer available. Choose another model to continue.',
+  'input.heteroPlus.tooltip': 'Formatting and scheduling',
   'input.more': 'More',
+  'input.schedule.cancel': 'Cancel',
+  'input.schedule.clear': 'Cancel scheduled send',
+  'input.schedule.failed': 'Could not schedule this message. Try again.',
+  'input.schedule.inHours': 'In {{count}} hour',
+  'input.schedule.inHours_other': 'In {{count}} hours',
+  'input.schedule.pending': 'Will be sent at {{time}}',
+  'input.schedule.scheduled': 'Scheduled for {{time}}',
+  'input.schedule.title': 'Send later',
   'input.send': 'Send',
   'input.sendWithCmdEnter': 'Press <key/> to send',
   'input.sendWithEnter': 'Press <key/> to send',
@@ -484,6 +493,7 @@ export default {
   'messageForward.deleteConfirm.success': 'Deleted {{count}} messages',
   'messageForward.deleteConfirm.title': 'Delete messages',
   'messageForward.empty': 'Select at least one message to forward',
+  'messageForward.failed': 'Some messages could not be forwarded',
   'messageForward.modal.empty': 'No other agents available',
   'messageForward.modal.moreMessages': '+{{count}} more messages',
   'messageForward.modal.noRecipients': 'Pick agents on the left to forward to',
@@ -500,6 +510,13 @@ export default {
   'messageForward.successMulti': 'Forwarded to {{count}} agents',
   'messageForward.transcript.header':
     'The following {{count}} messages were forwarded from another conversation. Please use them as context and continue:',
+  'messageForward.topic.context': 'Topic context',
+  'messageForward.topic.description':
+    'The user and assistant messages in this topic will be sent as context. Tool messages are excluded.',
+  'messageForward.topic.header':
+    'The following topic was forwarded from another conversation. Please use it as context and continue:',
+  'messageForward.topic.loadFailed': 'Could not load this topic for forwarding',
+  'messageForward.topic.modalTitle': 'Forward topic to Agent',
   'messageLongCollapse.collapse': 'Show less',
   'messageLongCollapse.expand': 'Show more',
   'messages.dm.sentTo': 'Visible only to {{name}}',
@@ -601,10 +618,13 @@ export default {
   'cliRateLimitGuide.actions.openSystemTools': 'Open System Tools',
   'cliRateLimitGuide.actions.retry': 'Retry message',
   'cliRateLimitGuide.afterReset':
-    'This account has reached its weekly usage limit. You can continue after {{resetAt}}.',
+    'This account has reached its current usage limit. You can continue after {{resetAt}}.',
+  'cliRateLimitGuide.afterResetWithLimitType':
+    'This account has reached its {{limitType}} usage limit. You can continue after {{resetAt}}.',
   'cliRateLimitGuide.desc':
     '{{name}} has reached its current usage limit and cannot continue this run right now.',
   'cliRateLimitGuide.limitType': 'Quota cycle',
+  'cliRateLimitGuide.limitTypes.fiveHourCycle': '5-hour window',
   'cliRateLimitGuide.limitTypes.weekCycle': 'Weekly',
   'cliRateLimitGuide.relative.day_one': '{{count}} day',
   'cliRateLimitGuide.relative.day_other': '{{count}} days',
