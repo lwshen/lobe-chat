@@ -19,6 +19,7 @@ import { ThreadModel } from '@/database/models/thread';
 import { TopicModel } from '@/database/models/topic';
 import { router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
+import { markSilentTRPCErrorLog } from '@/libs/trpc/utils/errorLogger';
 import { resolveContext } from '@/server/routers/lambda/_helpers/resolveContext';
 import { AiChatService } from '@/server/services/aiChat';
 import { AiGenerationService } from '@/server/services/aiGeneration';
@@ -29,8 +30,6 @@ const log = debug('lobe-lambda-router:ai-chat');
 const { createPrefixedTimingContext, logTiming, runTimedStage } = createTimingHelpers(
   'lobe-server:chat:lobehub:timing',
 );
-const SILENT_TRPC_ERROR_LOG_KEY = '__lobeSilentTRPCErrorLog';
-
 type TRPCErrorCode = ConstructorParameters<typeof TRPCError>[0]['code'];
 type TRPCStatusCode = Parameters<typeof getStatusKeyFromCode>[0];
 
@@ -49,19 +48,6 @@ const getTRPCErrorCodeFromStatus = (status: number): TRPCErrorCode => {
   if (status >= 400) return 'BAD_REQUEST';
 
   return 'INTERNAL_SERVER_ERROR';
-};
-
-const markSilentTRPCErrorLog = (error: unknown) => {
-  if (!error || typeof error !== 'object') return;
-
-  try {
-    Object.defineProperty(error, SILENT_TRPC_ERROR_LOG_KEY, {
-      configurable: true,
-      value: true,
-    });
-  } catch {
-    // Best-effort logging hint; never let it mask the original runtime error.
-  }
 };
 
 const createRuntimeTRPCError = (
@@ -125,8 +111,8 @@ export const aiChatRouter = router({
     log('schema: %O', input.schema);
 
     // Pre-allocate the tracing row id so we can return it to the client even
-    // though the actual `service.record()` call happens in Next's `after()`
-    // (after the response has been sent). Honour the caller-supplied id when
+    // though the actual `service.record()` call happens after the response has
+    // been sent. Honour the caller-supplied id when
     // one was passed via `tracing.tracingId` — the schema already validates
     // it as UUID, so a malformed value never reaches here.
     const tracingId = input.tracing?.tracingId ?? randomUUID();
