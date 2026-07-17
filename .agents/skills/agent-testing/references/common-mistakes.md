@@ -693,3 +693,41 @@ sessionStorage / IndexedDB / caches, re-seed auth, reopen) and then **assert the
 before asserting anything downstream of it** (`__LOBE_STORES.agent().agentMap[id]`). See
 probe-mock-patterns C11. Rule of thumb: the DB is where you _wrote_ it; the store is where the
 behavior _reads_ it — verify at the layer the behavior reads.
+
+---
+
+## Case 26 — Applying dual scope to only one action in a bulk-maintenance menu
+
+**Wrong approach**: after introducing own-scope and workspace-scope variants for one
+bulk action, leave sibling maintenance actions owner-own-only because the review focused
+on restricting what regular members can do.
+
+**Why it's wrong**: the capability matrix was evaluated per menu entry instead of across
+role × action × scope. An owner can retain safe personal actions while also receiving
+explicit workspace-wide variants for every applicable maintenance action.
+
+**What it breaks**: owners must manually process other members' records for the omitted
+actions, and the menu presents an inconsistent authority model where only one bulk action
+can operate at workspace scope.
+
+**Correct approach**: enumerate the full role × bulk-action matrix before implementation
+and verification. Give members own-only actions; give owners both own and workspace
+variants for every applicable action; use elevated confirmation for destructive
+workspace-wide variants; and assert every matrix cell in UI tests and screenshots.
+## Case 27 — Labeling two steps of a flow as a before/after `comparison` pair
+
+**Wrong approach**: for a case whose evidence is two SEQUENTIAL steps of one flow (the reject
+dialog being filled in, then the feedback card rendered after submitting), attaching them as a
+`comparison` pair with `role: before` / `role: after`.
+
+**Why it's wrong**: the comparison rendering's semantics are "the SAME view in two states" — the
+red band reads as "defective old state", the green band as "the fix". Flow steps are neither: the
+first shot is not a defect and the second is not a remediation. The user immediately asked " 这种明明
+是步骤，为什么是优化前和优化后？".
+
+**What it breaks**: the report claims an optimization happened where none did; the red/green framing
+misleads reviewers about what they are looking at.
+
+**Correct approach**: `comparison` is ONLY for the same surface before vs after a change. For flow
+steps, attach plain ordered evidence items (the array preserves order) and give each a caption
+naming its step ("step 1 — dialog with region circled", "step 2 — feedback card after submit").
