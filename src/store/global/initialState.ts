@@ -39,7 +39,15 @@ export enum GroupSettingsTabs {
 
 // business builds may register extra sidebar tabs, so any string key is accepted
 export type WorkingSidebarTab =
-  'browser' | 'files' | 'params' | 'resources' | 'review' | (string & {});
+  | 'browser'
+  | 'documents'
+  | 'files'
+  | 'overview'
+  | 'params'
+  | 'review'
+  | 'skills'
+  | 'web'
+  | (string & {});
 
 export const DEFAULT_RESOURCE_MANAGER_COLUMN_WIDTHS = {
   date: 160,
@@ -353,6 +361,12 @@ export interface SystemStatus {
    * can switch the panel to "review" when revealing the right panel.
    */
   workingSidebarTab?: WorkingSidebarTab;
+  /**
+   * One-shot request to reveal a WorkingSidebar tab. The nonce makes repeated
+   * requests for the already-selected tab observable, so a closed on-demand tab
+   * can be reopened by Git/File/Browser entry points.
+   */
+  workingSidebarTabRequest?: { nonce: number; tab: WorkingSidebarTab };
   /**
    * Width of the agent chat right-side WorkingSidebar (space / params / files / …).
    * Persisted so resizing survives remounts when navigating away and back.

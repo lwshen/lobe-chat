@@ -40,8 +40,14 @@ import type { AcceptanceBundle } from '@/services/verify';
 
 import {
   EvidenceComparisonCard,
+  meaningfulEvidenceCaption,
   readEvidenceComparison,
 } from '../components/EvidenceComparisonCard';
+import {
+  CollapsibleMarkdownEvidence,
+  EvidenceFileCard,
+  markdownTextEvidenceTypes,
+} from '../components/MarkdownEvidence';
 import { AnnotatedImage } from './Annotation';
 import { AttachmentThumbs } from './attachments';
 import { openCheckRejectModal } from './CheckRejectModal';
@@ -312,10 +318,6 @@ const EVIDENCE_BADGES = [
   { icon: FileText, key: 'file', labelKey: 'acceptance.evidence.file' },
 ] as const;
 
-/** A filename is not a caption — only descriptive text renders under the artifact. */
-const isFilename = (value: string | null | undefined) =>
-  !value || /^[\w.-]+\.(?:gif|jpe?g|mp4|png|webm|webp)$/i.test(value);
-
 /**
  * Reserve the image's box before it loads — with the stored intrinsic size the
  * layout never jumps when a row expands and its screenshots stream in.
@@ -363,7 +365,8 @@ const EvidenceList = memo<{ evidence: AcceptanceEvidence[] }>(({ evidence }) => 
   const comparisonSide = (item: AcceptanceEvidence) => ({
     caption:
       readEvidenceComparison(item.metadata)?.label ??
-      (isFilename(item.description) ? undefined : (item.description ?? undefined)),
+      meaningfulEvidenceCaption(item.description) ??
+      undefined,
     content: comparisonContent(item),
   });
 
@@ -385,9 +388,8 @@ const EvidenceList = memo<{ evidence: AcceptanceEvidence[] }>(({ evidence }) => 
           );
         }
 
-        const caption = !isFilename(item.description) && (
-          <span className={styles.caption}>{item.description}</span>
-        );
+        const description = meaningfulEvidenceCaption(item.description);
+        const caption = description && <span className={styles.caption}>{description}</span>;
         if (item.fileUrl && item.type === 'video')
           return (
             <Flexbox gap={4} key={item.id} style={{ maxWidth: '100%', width: 'fit-content' }}>
@@ -431,12 +433,29 @@ const EvidenceList = memo<{ evidence: AcceptanceEvidence[] }>(({ evidence }) => 
               {caption}
             </Flexbox>
           );
+        if (item.content && markdownTextEvidenceTypes.has(item.type))
+          return (
+            <Flexbox gap={4} key={item.id}>
+              <CollapsibleMarkdownEvidence>{item.content}</CollapsibleMarkdownEvidence>
+              {caption}
+            </Flexbox>
+          );
         if (item.content)
           return (
             <Flexbox gap={4} key={item.id}>
               <div className={styles.evidenceText}>{item.content}</div>
               {caption}
             </Flexbox>
+          );
+        if (item.fileUrl && markdownTextEvidenceTypes.has(item.type))
+          return (
+            <EvidenceFileCard
+              markdown
+              description={item.description}
+              fileName={item.fileName}
+              key={item.id}
+              url={item.fileUrl}
+            />
           );
         return null;
       })}

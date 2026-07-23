@@ -16,6 +16,28 @@
 
 ---
 
+## Case 26 — Treating a device list status badge as a substitute for information hierarchy
+
+**Wrong approach**: rendering a remote-device row with a large generic “Online” badge in the
+right-hand detail position while placing hostname, platform, and scope in a low-emphasis second
+line below the device name; omitting the device icon from the corresponding tool Inspector.
+
+**Why it's wrong**: online state is a compact property of the device identity, while hostname,
+platform, and scope are the details users need to distinguish similar machines. Giving the status
+the entire right edge reverses that hierarchy. The icon omission also makes the collapsed tool
+call harder to scan, and mixed text-component line heights can visibly misalign the Inspector
+count.
+
+**What it breaks**: device rows waste their strongest metadata area on repetitive state, similar
+devices become harder to compare, and the collapsed tool chain looks visually unfinished.
+
+**Correct approach**: put a platform-neutral device icon in the list Inspector; align count text
+with an explicit shared line box; place a semantic status dot plus localized status beside the
+device name; reserve the right-hand column for hostname, platform, and scope. Verify both expanded
+rows and the zero-count Inspector in a real chat screenshot.
+
+---
+
 ## Case 25 — Building a surface's "twin" without walking the sibling implementation feature-by-feature
 
 **Wrong approach**: when asked to make surface B "consistent with" an existing surface A (a list
@@ -106,3 +128,26 @@ the complete role × action × scope matrix.
 **Correct approach**: enumerate every matrix cell. Members receive own-only
 actions; owners receive both own and workspace variants for each applicable
 action, with elevated confirmation for destructive workspace-wide operations.
+
+## Never acquire Electron auth through the OAuth flow — inject state instead
+
+**Wrong approach**: on a signed-out desktop instance, following the old auth.md
+recipe — evaluating `remoteServerService.requestAuthorization(...)` (or clicking
+the app's "Sign in") to "drive the sign-in yourself".
+
+**Why it's wrong**: `AuthCtr` implements that flow with `shell.openExternal`, so
+every attempt **pops a login/authorize page in the user's default browser** —
+visibly, on their machine, repeatedly when retried. Dev instances also sit on
+per-instance ports (`localhost:3024`, …), so the authorize URL targets a localhost
+origin whose session/callback usually cannot complete: the user just accumulates
+broken login tabs.
+
+**What it breaks**: hijacks the user's personal browser session, leaks test
+activity into their real browsing context, and erodes trust in automated runs.
+
+**Correct approach**: login state is injected, never interactively acquired —
+① restore the `electron-login` snapshot (`login-status` / `save-login`);
+② mint the session via CLI/API seeding (the `web-seed` philosophy); ③ otherwise
+report auth as ❌ Blocked and request ONE manual sign-in. The corrected policy
+lives in `references/auth.md` ("When the instance comes up signed out") and
+PROJECT.md §4 Electron.
