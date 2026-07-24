@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as agentSignalService from '@/server/services/agentSignal';
 import * as verifyServices from '@/server/services/verify';
 
-import { CompletionLifecycle } from '../CompletionLifecycle';
+import { CompletionLifecycle, isSuccessLikeCompletionReason } from '../CompletionLifecycle';
+import { registerFileWorksForOperation } from '../fileWorkRegistration';
 import { hookDispatcher } from '../hooks';
 
 // Default async no-op implementation: the production code chains `.catch` on
@@ -21,9 +22,31 @@ vi.mock('@/business/server/agent-run/notifyAgentRunCompleted', () => ({
   notifyAgentRunCompleted: mockNotifyAgentRunCompleted,
 }));
 
+vi.mock('../fileWorkRegistration', () => ({
+  registerFileWorksForOperation: vi.fn(),
+}));
+
 const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const buildLifecycle = () => new CompletionLifecycle({} as any, 'user-1');
+
+describe('isSuccessLikeCompletionReason', () => {
+  // Regression: file-Work registration was gated on `reason === 'done'` alone,
+  // silently skipping runs stopped by a step/cost cap even though the lifecycle
+  // persists those as status='done' and recovers their assistant content.
+  it('treats capped runs (max_steps / cost_limit) as successful completions', () => {
+    expect(isSuccessLikeCompletionReason('done')).toBe(true);
+    expect(isSuccessLikeCompletionReason('max_steps')).toBe(true);
+    expect(isSuccessLikeCompletionReason('cost_limit')).toBe(true);
+  });
+
+  it('rejects non-success terminal and parked reasons', () => {
+    expect(isSuccessLikeCompletionReason('error')).toBe(false);
+    expect(isSuccessLikeCompletionReason('interrupted')).toBe(false);
+    expect(isSuccessLikeCompletionReason('waiting_for_human')).toBe(false);
+    expect(isSuccessLikeCompletionReason('waiting_for_async_tool')).toBe(false);
+  });
+});
 
 describe('CompletionLifecycle.extractErrorMessage', () => {
   it('extracts message from ChatCompletionErrorPayload (InsufficientBudgetForModel)', () => {
@@ -721,6 +744,49 @@ describe('CompletionLifecycle.dispatchHooks — completion notification', () => 
   });
 });
 
+describe('CompletionLifecycle.dispatchHooks — parks do not register file works', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Regression: the approval resume continues the SAME operationId
+  // (`processHumanIntervention` reschedules it), so the real terminal
+  // completion's scan covers pre-park edits. Registering at the park would
+  // persist `_fileWorksRegistered` into the park snapshot (skipping the
+  // terminal registration entirely) and freeze per-(op, file) versions at
+  // pre-approval content.
+  it('does NOT register on a human-approval park (same op resumes and registers later)', async () => {
+    const mockRegister = vi.mocked(registerFileWorksForOperation);
+    mockRegister.mockClear();
+    mockRegister.mockResolvedValue({ attempted: 0, failed: 0 });
+    const lifecycle = buildLifecycle();
+    vi.spyOn(lifecycle as any, 'persistCompletion').mockResolvedValue(undefined);
+    vi.spyOn(hookDispatcher, 'dispatch').mockResolvedValue(undefined as any);
+    vi.spyOn(hookDispatcher, 'unregister').mockImplementation(() => {});
+
+    const parkedState = { metadata: { _hooks: [], agentId: 'a' }, status: 'waiting_for_human' };
+    await lifecycle.dispatchHooks('op-1', parkedState, 'waiting_for_human');
+
+    expect(mockRegister).not.toHaveBeenCalled();
+  });
+
+  it('does NOT register on an async-tool park (same op resumes and registers later)', async () => {
+    const mockRegister = vi.mocked(registerFileWorksForOperation);
+    mockRegister.mockClear();
+    mockRegister.mockResolvedValue({ attempted: 0, failed: 0 });
+    const lifecycle = buildLifecycle();
+    vi.spyOn(lifecycle as any, 'persistCompletion').mockResolvedValue(undefined);
+
+    const parkedState = {
+      metadata: { _hooks: [], agentId: 'a' },
+      status: 'waiting_for_async_tool',
+    };
+    await lifecycle.dispatchHooks('op-1', parkedState, 'waiting_for_async_tool');
+
+    expect(mockRegister).not.toHaveBeenCalled();
+  });
+});
+
 describe('CompletionLifecycle.dispatchHooks — lastAssistantContent DB recovery (LOBE-11632)', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -964,5 +1030,87 @@ describe('CompletionLifecycle.emitSignalEvents — assistant anchor', () => {
       anchorMessageId: 'msg-assistant',
       assistantMessageId: 'msg-assistant',
     });
+  });
+});
+
+describe('CompletionLifecycle.registerFileWorks', () => {
+  const mockRegister = vi.mocked(registerFileWorksForOperation);
+
+  it('registers once and stamps the state marker so later calls skip', async () => {
+    mockRegister.mockClear();
+    mockRegister.mockResolvedValue({ attempted: 1, failed: 0 });
+    const lifecycle = buildLifecycle();
+    const state = {
+      cost: { total: 1.25 },
+      metadata: { userId: 'user-2' },
+      usage: { llm: { apiCalls: 2 } },
+    } as any;
+
+    await lifecycle.registerFileWorks('op-1', state);
+
+    expect(mockRegister).toHaveBeenCalledTimes(1);
+    // The terminal state's live totals ride along: on the pre-snapshot path the
+    // op row's cost/usage columns are not persisted yet.
+    expect(mockRegister).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalCost: { total: 1.25 },
+        finalUsage: { llm: { apiCalls: 2 } },
+        operationId: 'op-1',
+        userId: 'user-2',
+      }),
+    );
+    expect(state.metadata._fileWorksRegistered).toBe(true);
+
+    // The dispatchHooks backstop receives the same state later in the request —
+    // the marker must make that second call a no-op (no duplicate scan/export).
+    await lifecycle.registerFileWorks('op-1', state);
+    expect(mockRegister).toHaveBeenCalledTimes(1);
+  });
+
+  it('never throws and leaves the marker unset on failure so a later call retries', async () => {
+    mockRegister.mockClear();
+    mockRegister.mockRejectedValueOnce(new Error('sandbox export failed'));
+    const lifecycle = buildLifecycle();
+    const state = { metadata: {} } as any;
+
+    await expect(lifecycle.registerFileWorks('op-1', state)).resolves.toBeUndefined();
+    expect(state.metadata._fileWorksRegistered).toBeUndefined();
+
+    mockRegister.mockResolvedValueOnce({ attempted: 1, failed: 0 });
+    await lifecycle.registerFileWorks('op-1', state);
+    expect(mockRegister).toHaveBeenCalledTimes(2);
+    expect(state.metadata._fileWorksRegistered).toBe(true);
+  });
+
+  it('leaves the marker unset on a PARTIAL failure, then stamps it once all files land', async () => {
+    // Regression: registerFileWorksForOperation swallows per-file failures and
+    // never rejects, so a partial failure resolves normally. The marker must be
+    // gated on the outcome (`failed === 0`), NOT stamped unconditionally — else
+    // the dispatchHooks backstop skips the retry and the user gets neither a Work
+    // nor the edited-files fallback card for the file that failed to export.
+    mockRegister.mockClear();
+    const lifecycle = buildLifecycle();
+    const state = { metadata: {} } as any;
+
+    // One of two files failed to export/register this round.
+    mockRegister.mockResolvedValueOnce({ attempted: 2, failed: 1 });
+    await lifecycle.registerFileWorks('op-1', state);
+    expect(state.metadata._fileWorksRegistered).toBeUndefined();
+
+    // The backstop retries; the previously-registered file short-circuits on the
+    // DB probe and the failed one now lands → failed=0 → marker set.
+    mockRegister.mockResolvedValueOnce({ attempted: 2, failed: 0 });
+    await lifecycle.registerFileWorks('op-1', state);
+    expect(mockRegister).toHaveBeenCalledTimes(2);
+    expect(state.metadata._fileWorksRegistered).toBe(true);
+  });
+
+  it('tolerates a state without metadata', async () => {
+    mockRegister.mockClear();
+    mockRegister.mockResolvedValue({ attempted: 0, failed: 0 });
+    const lifecycle = buildLifecycle();
+
+    await expect(lifecycle.registerFileWorks('op-1', {} as any)).resolves.toBeUndefined();
+    expect(mockRegister).toHaveBeenCalledTimes(1);
   });
 });
