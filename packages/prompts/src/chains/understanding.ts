@@ -15,6 +15,18 @@ interface UnderstandingPersonaPromptInput {
   providers: string[];
 }
 
+interface UnderstandingAnalysisJsonSchema {
+  description: string;
+  name: string;
+  schema: {
+    additionalProperties: boolean;
+    properties: Record<string, unknown>;
+    required: string[];
+    type: 'object';
+  };
+  strict: boolean;
+}
+
 const PROVIDER_ID_MAX_LENGTH = 64;
 
 const displayStringJsonConstraints = (maxLength: number) => ({
@@ -162,7 +174,7 @@ export const UNDERSTANDING_ANALYSIS_JSON_SCHEMA = {
     type: 'object',
   },
   strict: true,
-} as const;
+} satisfies UnderstandingAnalysisJsonSchema;
 
 const formatCompleteness = ({ failedCount, succeededCount }: SafeCollectionDiagnostics): string =>
   `${succeededCount} of ${succeededCount + failedCount} collection operations succeeded`;
