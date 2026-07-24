@@ -4,6 +4,7 @@ import { deserializeParts } from '@lobechat/utils';
 import { isRecord } from '@lobechat/utils/object';
 import debug from 'debug';
 
+import { notifyAgentRunCompleted } from '@/business/server/agent-run/notifyAgentRunCompleted';
 import {
   AgentOperationModel,
   type ChildUsageRollup,
@@ -569,6 +570,28 @@ export class CompletionLifecycle {
       // plan against the deliverable. Fire-and-forget and self-guarded — a run
       // without an opted-in plan is a no-op, and failures never affect the run.
       if (reason === 'done') {
+        // Recall the user when a long run finishes cleanly while they may be
+        // away (push / inbox). Fire-and-forget through the `@/business` slot —
+        // the default implementation is a no-op. Sub-agent / group member
+        // completions are internal steps of a parent run, never a user-facing
+        // recall — in-group members carry `orchestrationRole: 'member'`
+        // WITHOUT `isSubAgent` (see execAgentMember), so guard both.
+        if (metadata?.isSubAgent !== true && metadata?.orchestrationRole !== 'member') {
+          void notifyAgentRunCompleted({
+            agentId: event.agentId || undefined,
+            duration: event.duration,
+            lastAssistantContent: event.lastAssistantContent,
+            operationId,
+            topicId: event.topicId,
+            userId: metadata?.userId || this.userId,
+            // Personal runs leave this undefined ⇒ bare deep link; workspace
+            // runs carry the id so the business slot can slug-prefix the URL.
+            workspaceId: this.workspaceId,
+          }).catch((error) =>
+            log('[%s] Completion notification failed (non-fatal): %O', operationId, error),
+          );
+        }
+
         // The task's verify plan is instantiated fire-and-forget at run start; a
         // fast or no-op run can reach completion before it settles. Await the
         // in-flight instantiation (if any) so the gate sees the confirmed plan
