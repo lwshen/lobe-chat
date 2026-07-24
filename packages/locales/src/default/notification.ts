@@ -5,6 +5,8 @@ export default {
     'Your scheduled task "{{jobName}}" couldn\'t run because your account is out of credits. Top up or upgrade your plan to resume future runs.',
   'agent_cron_job_failed_insufficient_budget_title': 'Scheduled task paused: insufficient credits',
   'agent_cron_job_failed_title': 'Scheduled task failed',
+  'agent_run_completed': '{{preview}}',
+  'agent_run_completed_title': 'Agent task completed',
   'billboard.learnMore': 'Learn more',
   'billboard.menuLabel': 'Announcements',
   'category.billing': 'Billing',
