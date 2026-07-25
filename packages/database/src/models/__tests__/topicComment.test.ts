@@ -93,6 +93,25 @@ afterEach(cleanup);
 describe('TopicCommentModel', () => {
   describe('createWithMentions', () => {
     it('should create a topic-level comment stamped with the topic workspaceId', async () => {
+      await serverDB.insert(messages).values([
+        {
+          content: 'member message',
+          id: 'tc-msg-participant-1',
+          role: 'user',
+          topicId: workspaceTopicId,
+          userId: memberId,
+          workspaceId: workspaceAId,
+        },
+        {
+          content: 'another member message',
+          id: 'tc-msg-participant-2',
+          role: 'assistant',
+          topicId: workspaceTopicId,
+          userId: memberId,
+          workspaceId: workspaceAId,
+        },
+      ]);
+
       const result = await authorModel.createWithMentions({
         clientId: 'client-1',
         content: 'a topic-level comment',
@@ -101,6 +120,8 @@ describe('TopicCommentModel', () => {
 
       expect(result.isDuplicate).toBe(false);
       expect(result.addedMentionUserIds).toEqual([]);
+      expect(result.topicParticipantUserIds).toHaveLength(2);
+      expect(result.topicParticipantUserIds).toEqual(expect.arrayContaining([authorId, memberId]));
       expect(result.topicOwnerUserId).toBe(authorId);
       expect(result.comment).toMatchObject({
         anchorPreview: null,
@@ -124,6 +145,8 @@ describe('TopicCommentModel', () => {
       expect(result.comment.anchorPreview?.role).toBe('assistant');
       expect(result.comment.anchorPreview?.excerpt).toHaveLength(200);
       expect(result.comment.anchorPreview?.excerpt.startsWith('anchor message content')).toBe(true);
+      expect(result.messageOwnerUserId).toBe(authorId);
+      expect(result.topicParticipantUserIds).toEqual([]);
     });
 
     it('should not split a surrogate pair at the excerpt cut (jsonb rejects lone surrogates)', async () => {
@@ -857,18 +880,24 @@ describe('TopicCommentModel', () => {
 
       const base = new Date('2026-01-01T10:00:00Z');
       const later = new Date('2026-01-02T10:00:00Z');
+      // Fixed lowercase IDs keep JavaScript and PostgreSQL collations aligned
+      // while the shared timestamp still exercises the id tie-breaker.
+      const firstReplyId = 'tcm_list_reply_a';
+      const secondReplyId = 'tcm_list_reply_b';
+      const thirdReplyId = 'tcm_list_reply_c';
       await serverDB
         .update(topicComments)
-        .set({ createdAt: base })
+        .set({ createdAt: base, id: firstReplyId })
         .where(eq(topicComments.id, replies[0].comment.id));
       await serverDB
         .update(topicComments)
-        .set({ createdAt: later })
-        .where(inArray(topicComments.id, [replies[1].comment.id, replies[2].comment.id]));
-      const expectedOrder = [
-        replies[0].comment.id,
-        ...[replies[1].comment.id, replies[2].comment.id].sort(),
-      ];
+        .set({ createdAt: later, id: secondReplyId })
+        .where(eq(topicComments.id, replies[1].comment.id));
+      await serverDB
+        .update(topicComments)
+        .set({ createdAt: later, id: thirdReplyId })
+        .where(eq(topicComments.id, replies[2].comment.id));
+      const expectedOrder = [firstReplyId, secondReplyId, thirdReplyId];
 
       const page1 = await authorModel.listReplies({ limit: 2, rootCommentId: root.comment.id });
       expect(page1.items.map((reply) => reply.id)).toEqual(expectedOrder.slice(0, 2));
