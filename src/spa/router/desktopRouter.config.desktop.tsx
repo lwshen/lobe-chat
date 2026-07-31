@@ -4,9 +4,9 @@ import {
   BrainCircuit,
   Download,
   FilePenIcon,
-  Home,
   Image,
   LibraryBigIcon,
+  MessageSquarePlus,
   Settings,
   ShapesIcon,
 } from 'lucide-react';
@@ -28,7 +28,8 @@ import {
 } from '@/features/Verify/routeMeta';
 import { workspaceHomeRouteMeta } from '@/features/Workspace/routeMeta';
 import DesktopOnboarding from '@/routes/(desktop)/desktop-onboarding';
-// Layouts — sync import (Electron local, no network overhead)
+// Layouts — sync import (Electron local, no network overhead).
+// Unlike the web router, Electron intentionally does not register idle preload groups.
 import DesktopMainLayout from '@/routes/(main)/_layout';
 import ImagePage from '@/routes/(main)/(create)/image';
 import DesktopImageLayout from '@/routes/(main)/(create)/image/_layout';
@@ -54,7 +55,7 @@ import WorkspaceSlugSettingsPlansPage from '@/routes/(main)/[workspaceSlug]/sett
 import WorkspaceSlugSettingsProviderPage from '@/routes/(main)/[workspaceSlug]/settings/provider';
 import WorkspaceSlugSettingsServiceModelPage from '@/routes/(main)/[workspaceSlug]/settings/service-model';
 import WorkspaceSlugSettingsSkillPage from '@/routes/(main)/[workspaceSlug]/settings/skill';
-import WorkspaceSlugSettingsStatsPage from '@/routes/(main)/[workspaceSlug]/settings/stats';
+import WorkspaceSlugSettingsStatisticsPage from '@/routes/(main)/[workspaceSlug]/settings/statistics';
 import WorkspaceSlugSettingsStoragePage from '@/routes/(main)/[workspaceSlug]/settings/storage';
 import WorkspaceSlugSettingsUsagePage from '@/routes/(main)/[workspaceSlug]/settings/usage';
 import AcceptanceWorkspace from '@/routes/(main)/acceptance';
@@ -68,9 +69,15 @@ import AgentChannelPlatformPage from '@/routes/(main)/agent/channel/[platform]';
 import AgentDocumentsIndexRoute from '@/routes/(main)/agent/docs';
 import AgentDocumentLayout from '@/routes/(main)/agent/docs/_layout';
 import AgentDocumentRoute from '@/routes/(main)/agent/docs/[docId]';
-import { agentRouteMeta, topicsRouteMeta } from '@/routes/(main)/agent/features/routeMeta';
+import {
+  agentChannelRouteMeta,
+  agentProfileRouteMeta,
+  agentRouteMeta,
+  agentStatisticsRouteMeta,
+  topicsRouteMeta,
+} from '@/routes/(main)/agent/features/routeMeta';
 import AgentProfilePage from '@/routes/(main)/agent/profile';
-import AgentStatsPage from '@/routes/(main)/agent/stats';
+import AgentStatisticsPage from '@/routes/(main)/agent/statistics';
 import AgentTaskDetailRoute from '@/routes/(main)/agent/task/[taskId]';
 import AgentScopedTasksRoute from '@/routes/(main)/agent/tasks';
 import AgentTopicsPage from '@/routes/(main)/agent/topics';
@@ -110,7 +117,7 @@ import EvalCaseDetailPage from '@/routes/(main)/eval/bench/[benchmarkId]/runs/[r
 import EvalExperimentDetailPage from '@/routes/(main)/eval/experiments/[experimentId]';
 import GroupPage from '@/routes/(main)/group';
 import DesktopGroupLayout from '@/routes/(main)/group/_layout';
-import { groupRouteMeta } from '@/routes/(main)/group/features/routeMeta';
+import { groupProfileRouteMeta, groupRouteMeta } from '@/routes/(main)/group/features/routeMeta';
 import GroupProfilePage from '@/routes/(main)/group/profile';
 import DesktopHome from '@/routes/(main)/home';
 import DesktopHomeLayout from '@/routes/(main)/home/_layout';
@@ -196,14 +203,17 @@ export const sharedMainAreaChildren: RouteObject[] = [
           },
           {
             element: <AgentProfilePage />,
+            handle: { meta: agentProfileRouteMeta },
             path: 'profile',
           },
           {
             element: <AgentChannelPage />,
+            handle: { meta: agentChannelRouteMeta },
             path: 'channel',
           },
           {
             element: <AgentChannelPlatformPage />,
+            handle: { meta: agentChannelRouteMeta },
             path: 'channel/:platform',
           },
           {
@@ -212,9 +222,12 @@ export const sharedMainAreaChildren: RouteObject[] = [
             path: 'topics',
           },
           {
-            element: <AgentStatsPage />,
-            path: 'stats',
+            element: <AgentStatisticsPage />,
+            handle: { meta: agentStatisticsRouteMeta },
+            path: 'statistics',
           },
+          // Legacy `/agent/:aid/stats` URLs — kept for deep-links.
+          { element: redirectElement('../statistics'), path: 'stats' },
           {
             element: <AgentScopedTasksRoute />,
             handle: { meta: tasksRouteMeta },
@@ -250,6 +263,7 @@ export const sharedMainAreaChildren: RouteObject[] = [
           },
           {
             element: <GroupProfilePage />,
+            handle: { meta: groupProfileRouteMeta },
             path: 'profile',
           },
           {
@@ -737,7 +751,9 @@ export const createMainAreaChildren = (): RouteObject[] => [
               { element: <WorkspaceSlugSettingsGeneralPage />, path: 'general' },
               { element: <WorkspaceSlugSettingsMembersPage />, path: 'members' },
               { element: <WorkspaceSlugSettingsNotificationPage />, path: 'notification' },
-              { element: <WorkspaceSlugSettingsStatsPage />, path: 'stats' },
+              { element: <WorkspaceSlugSettingsStatisticsPage />, path: 'statistics' },
+              // Legacy `/:slug/settings/stats` URLs — kept for deep-links.
+              { element: redirectElement('../statistics'), path: 'stats' },
               { element: <WorkspaceSlugSettingsPlansPage />, path: 'plans' },
               { element: <WorkspaceSlugSettingsBillingPage />, path: 'billing' },
               { element: <WorkspaceSlugSettingsCreditsPage />, path: 'credits' },
@@ -784,7 +800,11 @@ export const createMainAreaChildren = (): RouteObject[] => [
       </DesktopHomeLayout>
     ),
     handle: {
-      meta: routeMeta({ icon: Home, titleKey: 'navigation.home' }),
+      meta: routeMeta({
+        icon: MessageSquarePlus,
+        tabTitleKey: 'navigation.newChat',
+        titleKey: 'navigation.home',
+      }),
     },
     index: true,
   },

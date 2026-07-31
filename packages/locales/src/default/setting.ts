@@ -710,6 +710,8 @@ export default {
     'Defines who this agent is, what it is responsible for, and how it works and responds. It serves as a core instruction in every conversation.',
   'settingAgent.prompt.editorPlaceholder':
     'Enter core instructions, press / to open the Slash Menu',
+  'settingAgent.prompt.mode.source': 'Markdown source',
+  'settingAgent.prompt.mode.visual': 'Visual editor',
   'settingAgent.prompt.placeholder': 'Enter agent instructions',
   'settingAgent.prompt.title': 'Core Instructions',
   'settingAgent.agentTools.add': 'Add Tool',
@@ -923,7 +925,7 @@ export default {
   'settingImage.defaultCount.desc':
     'Set the default number of images generated when creating a new task in the image generation panel.',
   'settingImage.defaultCount.label': 'Default Image Count',
-  'settingImage.defaultCount.title': 'AI Image',
+  'settingImage.defaultCount.title': 'Generation',
   'settingModel.enableContextCompression.desc':
     'Automatically compress historical messages into summaries when conversation exceeds 64,000 tokens, saving 60-80% token usage',
   'settingModel.enableContextCompression.title': 'Enable Auto Context Compression',
@@ -1043,9 +1045,9 @@ export default {
   'settingSystem.oauth.signout.confirm': 'Confirm sign out?',
   'settingSystem.oauth.signout.success': 'Sign out successful',
   'settingSystem.title': 'System Settings',
-  'serviceModel.modelAssignments.title': 'Model Assignments',
+  'serviceModel.modelAssignments.title': 'General',
   'serviceModel.contextLimit.placeholder': 'Context limit',
-  'serviceModel.memoryModels.title': 'Memory Models',
+  'serviceModel.memoryModels.title': 'Memory',
   'serviceModel.optionalFeatures.title': 'Optional Features',
   'settingSystemTools.appEnvironment.chromium.desc': 'Chromium browser engine version',
   'settingSystemTools.appEnvironment.desc': 'Built-in runtime versions in the desktop app',
@@ -1067,6 +1069,13 @@ export default {
     'Development runtime environments for executing scripts and packages',
   'settingSystemTools.detecting': 'Detecting...',
   'settingSystemTools.redetect': 'Re-detect',
+  'settingSystemTools.shell.desc': 'Shell used when the agent runs local commands on this machine',
+  'settingSystemTools.shell.mode.auto': 'Automatic (PowerShell)',
+  'settingSystemTools.shell.mode.desc':
+    'PowerShell is used by default. Git Bash appears as an option when Git for Windows is installed. Current shell:',
+  'settingSystemTools.shell.mode.gitbash': 'Git Bash',
+  'settingSystemTools.shell.mode.title': 'Windows Shell',
+  'settingSystemTools.shell.title': 'Command Execution',
   'settingSystemTools.status.available': 'Available',
   'settingSystemTools.status.notDetected': 'Not detected',
   'settingSystemTools.status.unavailable': 'Unavailable',
@@ -2235,6 +2244,10 @@ When I am ___, I need ___
   'workspace.general.transferAgents.modal.failed': 'Failed to move agents',
   'workspace.general.transferAgents.modal.goToTarget': 'Go to {{target}}',
   'workspace.general.transferAgents.modal.loadFailed': 'Failed to load agents',
+  'workspace.general.transferAgents.modal.moveAgent': 'Move Agent',
+  'workspace.general.transferAgents.modal.moveAgentDesc':
+    'You can move to personal or workspaces that have permission to create an agent. All associated data moves with the agent: topics, file and knowledge base links, scheduled jobs, and related tasks. Custom plugins may not be available and multi-agent group associations will be removed.',
+  'workspace.general.transferAgents.modal.moveTitle': 'Move',
   'workspace.general.transferAgents.modal.noAgents': 'No agents in this workspace',
   'workspace.general.transferAgents.modal.selectAgents': 'Select Agents to move to {{target}}.',
   'workspace.general.transferAgents.modal.selectPlaceholder':
@@ -2242,8 +2255,6 @@ When I am ___, I need ___
   'workspace.general.transferAgents.modal.selectTarget':
     'You can move to personal or workspaces that have permission to create an agent.',
   'workspace.general.transferAgents.modal.selected': 'selected',
-  'workspace.general.transferAgents.modal.selectedAgent':
-    'This Agent will move to {{target}} and leave the current space. All associated data moves with it: sessions, topics and messages, file and knowledge base links, scheduled jobs, and related tasks — including every member’s conversations with this Agent.',
   'workspace.general.transferAgents.modal.success': '{{count}} agent(s) moved',
   'workspace.general.transferAgents.modal.title': 'Move Agents',
   'workspace.general.transferAgents.modal.transfer': 'Move {{count}} agent(s)',
@@ -2552,10 +2563,14 @@ When I am ___, I need ___
   'workspace.members.pending.revokeFailed': 'Failed to revoke invitation',
   'workspace.members.seatChange.memberJoinBlocked':
     'Current members have reached the scheduled seat limit, so new paid members may not be able to join this workspace',
+  'workspace.members.seatUsage_one': '{{used}} / {{capacity}} seat',
+  'workspace.members.seatUsage_other': '{{used}} / {{capacity}} seats',
   'workspace.members.subtitle': 'Manage workspace members and invitations',
   'workspace.members.tabs.members': 'Team Members',
   'workspace.members.tabs.pending': 'Pending Invitations',
   'workspace.members.title': 'Members',
+  'workspace.members.totalCount_one': '{{total}} member',
+  'workspace.members.totalCount_other': '{{total}} members',
   'workspace.name.placeholder': 'Workspace name',
   'workspace.name.title': 'Name',
   'workspace.newWorkspace': 'New Workspace',
@@ -2884,6 +2899,9 @@ When I am ___, I need ___
   'workspaceSetting.tab.general': 'General',
   'workspaceSetting.tab.members': 'Members',
   'workspaceSetting.storage.comingSoon': 'Workspace-scoped data import & export is coming soon.',
+  'workspaceSetting.storage.danger.reset.confirm.content':
+    'Every workspace setting goes back to its default, for everyone in the workspace. Agents, conversations, and files are not touched.',
+  'workspaceSetting.storage.danger.reset.confirm.ok': 'Reset Settings',
   'workspaceSetting.storage.danger.reset.desc':
     'Restore all workspace settings to defaults. Workspace data will not be deleted.',
   'workspaceSetting.storage.danger.reset.title': 'Reset Workspace Settings',

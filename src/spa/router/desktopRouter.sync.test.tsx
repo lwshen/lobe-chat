@@ -99,6 +99,33 @@ describe('desktopRouter config sync', () => {
     });
   });
 
+  // Regression for agent sub-page tab titles show section and agent name (not bare "LobeHub"): these pages rendered a bare "LobeHub" tab title
+  // because no route in the matched chain declared a handle.meta.
+  it.each([
+    '/agent/agent-1/profile',
+    '/agent/agent-1/channel',
+    '/agent/agent-1/channel/slack',
+    '/agent/agent-1/statistics',
+    '/group/group-1/profile',
+  ])('%s declares route meta so the tab title is not bare branding', (pathname) => {
+    const matches = matchRoutes(desktopRoutes, pathname);
+
+    expect(matches, `${pathname} must match a route`).toBeTruthy();
+
+    const meta = matches!
+      .map((match) => (match.route.handle as { meta?: unknown } | undefined)?.meta)
+      .findLast(Boolean);
+    expect(meta, `${pathname} must declare handle.meta`).toBeDefined();
+  });
+
+  // `/agent/:aid/stats` was renamed to `statistics`; bookmarks, shared links and
+  // restored Electron tabs still carry the old segment and must not 404.
+  it('keeps the legacy agent stats path matching so deep-links still resolve', () => {
+    const matches = matchRoutes(desktopRoutes, '/agent/agent-1/stats');
+
+    expect(matches?.at(-1)?.route.path).toBe('stats');
+  });
+
   it('personal memory settings route is not shadowed by workspace memory route', () => {
     const matches = matchRoutes(desktopRoutes, '/settings/memory');
     const paths = matches?.map((match) => match.route.path);

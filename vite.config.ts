@@ -13,10 +13,12 @@ import {
   sharedModulePreload,
   sharedOptimizeDeps,
   sharedPwaGlobIgnores,
+  sharedPwaRuntimeCaching,
   sharedRendererDefine,
   sharedRendererPlugins,
 } from './plugins/vite/sharedRendererConfig';
 import { vercelSkewProtection } from './plugins/vite/vercelSkewProtection';
+import { createViteWatchOptions } from './plugins/vite/watchOptions';
 
 const isMobile = process.env.MOBILE === 'true';
 const isAuth = process.env.AUTH === 'true';
@@ -265,6 +267,7 @@ export default defineConfig({
           globPatterns: ['**/*.{js,css,html,woff2}'],
           maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
           runtimeCaching: [
+            ...sharedPwaRuntimeCaching,
             {
               handler: 'StaleWhileRevalidate',
               options: { cacheName: 'google-fonts-stylesheets' },
@@ -366,8 +369,6 @@ export default defineConfig({
         './packages/agent-manager-runtime/src/**/*.ts',
       ],
     },
-    watch: {
-      ignored: ['**/e2e/reports/**', '**/e2e/screenshots/**'],
-    },
+    watch: createViteWatchOptions([__dirname]),
   },
 });
