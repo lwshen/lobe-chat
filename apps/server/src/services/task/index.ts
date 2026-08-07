@@ -16,10 +16,12 @@ import type {
 import { TRPCError } from '@trpc/server';
 
 import { AgentModel } from '@/database/models/agent';
+import { ProjectModel } from '@/database/models/project';
 import { TaskModel } from '@/database/models/task';
 import { TaskTopicModel } from '@/database/models/taskTopic';
 import { TopicModel } from '@/database/models/topic';
 import { UserModel } from '@/database/models/user';
+import { VerifyRunModel } from '@/database/models/verifyRun';
 import type { LobeChatDatabase } from '@/database/type';
 
 import { AiAgentService } from '../aiAgent';
@@ -63,6 +65,7 @@ export interface CreateTaskInput {
   name?: string;
   parentTaskId?: string;
   priority?: number;
+  projectId?: string;
   schedulePattern?: string;
   scheduleTimezone?: string;
   sortOrder?: number;
@@ -92,6 +95,7 @@ export class TaskService {
   private agentModel: AgentModel;
   private db: LobeChatDatabase;
   private taskModel: TaskModel;
+  private projectModel: ProjectModel;
   private taskTopicModel: TaskTopicModel;
   private topicModel: TopicModel;
   private userId: string;
@@ -103,6 +107,7 @@ export class TaskService {
     this.userId = userId;
     this.workspaceId = workspaceId;
     this.agentModel = new AgentModel(db, userId, workspaceId);
+    this.projectModel = new ProjectModel(db, userId, workspaceId);
     this.taskModel = new TaskModel(db, userId, workspaceId);
     this.taskTopicModel = new TaskTopicModel(db, userId, workspaceId);
     this.topicModel = new TopicModel(db, userId, workspaceId);
@@ -124,6 +129,20 @@ export class TaskService {
       const parent = await this.resolveOrThrow(createData.parentTaskId);
       createData.parentTaskId = parent.id;
       parentVisibility = parent.visibility;
+      if (createData.projectId && createData.projectId !== parent.projectId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'Subtask must belong to the same project as its parent',
+        });
+      }
+      createData.projectId ??= parent.projectId ?? undefined;
+    }
+
+    if (
+      createData.projectId &&
+      !(await this.projectModel.findManageableById(createData.projectId))
+    ) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: 'Project not found' });
     }
 
     // Pull the model/provider snapshot and the agent's visibility in a single
@@ -777,6 +796,13 @@ export class TaskService {
 
     const authorMap = await this.resolveAuthors(agentIds, userIds);
 
+    // Every run row answers "and did it pass?" on its own (with counts). Without this the
+    // activity feed lists rounds that all look alike, and the only way to learn
+    // a round's verdict is to leave for the acceptance page.
+    const verifyByOperation = await new VerifyRunModel(this.db, this.userId, this.workspaceId)
+      .findByOperations(topics.map((t) => t.operationId).filter((id): id is string => Boolean(id)))
+      .catch(() => new Map());
+
     const creatorId = task.createdByAgentId ?? task.createdByUserId;
     const createdActivity: TaskDetailActivity | null =
       task.createdAt && creatorId
@@ -792,6 +818,7 @@ export class TaskService {
       ...topics.map((t) => {
         const handoff = t.handoff as TaskTopicHandoff | null;
         const topicAgentId = t.agentId ?? t.sourceTaskAssigneeAgentId ?? task.assigneeAgentId;
+        const verifyRun = t.operationId ? verifyByOperation.get(t.operationId) : undefined;
         return {
           author: topicAgentId ? authorMap.get(topicAgentId) : undefined,
           completedAt: toISO(t.completedAt),
@@ -809,6 +836,20 @@ export class TaskService {
           sourceTaskName: t.sourceTaskName,
           time: toISO(t.createdAt),
           title: handoff?.title || t.title || UNTITLED_TOPIC_TITLE,
+          // What opened this round. Without it the feed cannot distinguish a run
+          // the user started from one the goal loop / scheduler opened on its
+          // own — they render identically apart from `#seq`.
+          trigger: t.trigger ?? null,
+          verify: verifyRun
+            ? {
+                acceptanceId: verifyRun.acceptanceId,
+                passed: verifyRun.passed,
+                roundIndex: verifyRun.roundIndex,
+                runId: verifyRun.id,
+                status: verifyRun.status,
+                total: verifyRun.total,
+              }
+            : null,
           type: 'topic' as const,
         };
       }),
