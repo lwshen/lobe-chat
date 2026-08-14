@@ -11,11 +11,20 @@ on:
     types: [ new-commit ]
 
 concurrency:
-  group: ${{ github.ref }}-${{ github.workflow }}
+  # mirror builds share a ref (repository_dispatch always runs on the default branch), so key
+  # them on the upstream tag instead — otherwise they queue behind each other
+  group: ${{ github.event.client_payload.ref || github.ref }}-${{ github.workflow }}
   cancel-in-progress: false
 
 env:
   REGISTRY_IMAGE: ghcr.io/lwshen/lobe-chat
+  # Set only for upstream-mirror builds dispatched by sync-upstream-release.yml. Read through
+  # `env` rather than the raw context so an absent payload is a plain empty string.
+  MIRROR_REF: ${{ github.event.client_payload.ref }}
+  MIRROR_VERSION: ${{ github.event.client_payload.version }}
+  MIRROR_PRERELEASE: ${{ github.event.client_payload.prerelease }}
+  # only the newest release of a dispatch batch may move `canary` / `latest`
+  MIRROR_MOVING: ${{ github.event.client_payload.moving }}
 
 jobs:
   build:
@@ -39,6 +48,11 @@ jobs:
 
       - name: Checkout base
         uses: actions/checkout@v6
+        with:
+          # a mirror build compiles upstream's code at the released tag; that tag deliberately
+          # never lands in this fork, so check it out straight from upstream
+          repository: ${{ env.MIRROR_REF != '' && 'lobehub/lobehub' || github.repository }}
+          ref: ${{ env.MIRROR_REF }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -48,12 +62,20 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_IMAGE }}
+          # first three lines: branch pushes and this fork's own `release: published`.
+          # last three: upstream mirror builds arriving as `repository_dispatch`.
+          # `latest` is gated on the event, not just on `prerelease`: outside a release event
+          # `github.event.release.prerelease` is null, so a bare `!` would tag every branch
+          # push and every mirrored nightly as `latest`.
           tags: |
             type=semver,pattern={{version}}
-            type=ref,event=branch
-            type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
+            type=ref,event=branch,enable=${{ env.MIRROR_VERSION == '' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
             type=raw,value=canary,enable=${{ contains(github.event.release.tag_name, '-canary.') }}
             type=raw,value=${{ github.event.release.tag_name }},enable=${{ github.event.release.prerelease == true }}
+            type=raw,value=${{ env.MIRROR_VERSION }},enable=${{ env.MIRROR_VERSION != '' }}
+            type=raw,value=canary,enable=${{ env.MIRROR_MOVING == 'true' && contains(env.MIRROR_REF, '-canary.') }}
+            type=raw,value=latest,enable=${{ env.MIRROR_MOVING == 'true' && env.MIRROR_PRERELEASE != 'true' }}
 
       - name: Docker login
         uses: docker/login-action@v3
@@ -120,12 +142,20 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_IMAGE }}
+          # first three lines: branch pushes and this fork's own `release: published`.
+          # last three: upstream mirror builds arriving as `repository_dispatch`.
+          # `latest` is gated on the event, not just on `prerelease`: outside a release event
+          # `github.event.release.prerelease` is null, so a bare `!` would tag every branch
+          # push and every mirrored nightly as `latest`.
           tags: |
             type=semver,pattern={{version}}
-            type=ref,event=branch
-            type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
+            type=ref,event=branch,enable=${{ env.MIRROR_VERSION == '' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
             type=raw,value=canary,enable=${{ contains(github.event.release.tag_name, '-canary.') }}
             type=raw,value=${{ github.event.release.tag_name }},enable=${{ github.event.release.prerelease == true }}
+            type=raw,value=${{ env.MIRROR_VERSION }},enable=${{ env.MIRROR_VERSION != '' }}
+            type=raw,value=canary,enable=${{ env.MIRROR_MOVING == 'true' && contains(env.MIRROR_REF, '-canary.') }}
+            type=raw,value=latest,enable=${{ env.MIRROR_MOVING == 'true' && env.MIRROR_PRERELEASE != 'true' }}
 
       - name: Docker login
         uses: docker/login-action@v3
