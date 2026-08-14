@@ -1,0 +1,126 @@
+name: Sync Upstream Release
+
+# Mirror upstream (lobehub/lobehub) releases & pre-releases into this fork so they
+# trigger the existing Docker build workflows.
+#
+# Why polling: GitHub never sends us events for another repo's releases, so we poll
+# the upstream releases API on a schedule and mirror any we haven't built yet.
+#
+# Two hard requirements make this work (do NOT "simplify" them away):
+#   1. secrets.RELEASE_PAT — a release created with the default GITHUB_TOKEN does NOT
+#      trigger other workflows (GitHub's recursion guard). The release MUST be created
+#      with a PAT so `release: published` fires release-docker.yml / release-docker-acr.yml.
+#      Fine-grained PAT needs Contents: Read and write on this fork.
+#   2. The build workflows read github.event.release.* and live on the default branch
+#      (canary), which is where `release` events pick up their workflow file. Keep them there.
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: Only mirror upstream releases published within this many days (guards against mass-building history on first run)
+        required: false
+        default: '7'
+
+concurrency:
+  group: sync-upstream-release
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: lobehub/lobehub
+  LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
+
+jobs:
+  mirror:
+    name: Mirror upstream releases
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }}
+    steps:
+      # Lightweight probe first — no checkout — so the ~95% of runs with nothing new stay cheap.
+      - name: Detect new upstream releases
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          cutoff=$(date -u -d "${LOOKBACK_DAYS} days ago" +%s)
+
+          # newest first; drafts filtered out, pre-releases kept
+          releases=$(gh api "repos/${UPSTREAM_REPO}/releases?per_page=10")
+          mapfile -t rels < <(echo "$releases" | jq -c 'map(select(.draft == false)) | reverse | .[]')
+
+          new='[]'
+          for rel in "${rels[@]}"; do
+            tag=$(echo "$rel" | jq -r '.tag_name')
+            published_at=$(echo "$rel" | jq -r '.published_at')
+
+            if [ "$(date -u -d "$published_at" +%s)" -lt "$cutoff" ]; then
+              echo "skip $tag (before the ${LOOKBACK_DAYS}-day lookback window)"
+              continue
+            fi
+            if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "skip $tag (already mirrored)"
+              continue
+            fi
+
+            echo "new: $tag"
+            # keep only the fields the mirror step needs, so the step output stays small
+            new=$(echo "$new" | jq -c --argjson r "$rel" \
+              '. + [{tag_name: $r.tag_name, prerelease: $r.prerelease, name: $r.name, html_url: $r.html_url}]')
+          done
+
+          count=$(echo "$new" | jq 'length')
+          echo "found $count new release(s)"
+          [ "$count" -gt 0 ] && echo "has_new=true" >> "$GITHUB_OUTPUT" || echo "has_new=false" >> "$GITHUB_OUTPUT"
+          echo "items=$new" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: steps.detect.outputs.has_new == 'true'
+        uses: actions/checkout@v6
+        with:
+          # full history so the upstream release commit pushes with complete connectivity;
+          # default GITHUB_TOKEN credentials keep the tag push "silent" (no `push:` build)
+          fetch-depth: 0
+
+      - name: Mirror releases
+        if: steps.detect.outputs.has_new == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT used ONLY for `gh release create`, so `release: published` triggers the docker builds
+          RELEASE_TOKEN: ${{ secrets.RELEASE_PAT }}
+          ITEMS: ${{ steps.detect.outputs.items }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${RELEASE_TOKEN}" ]; then
+            echo "::error::secrets.RELEASE_PAT is not set. A PAT is required — a release created with GITHUB_TOKEN will not trigger the docker build workflows."
+            exit 1
+          fi
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+
+          mapfile -t rels < <(echo "$ITEMS" | jq -c '.[]')
+          for rel in "${rels[@]}"; do
+            tag=$(echo "$rel" | jq -r '.tag_name')
+            prerelease=$(echo "$rel" | jq -r '.prerelease')
+            title=$(echo "$rel" | jq -r '.name // .tag_name')
+            url=$(echo "$rel" | jq -r '.html_url')
+
+            echo "mirroring $tag (prerelease=$prerelease)"
+
+            # bring the exact upstream commit + tag into the fork; pushed with GITHUB_TOKEN so it stays silent
+            git fetch upstream "refs/tags/${tag}:refs/tags/${tag}"
+            git push origin "refs/tags/${tag}"
+
+            # create the release with the PAT so `release: published` triggers the docker builds.
+            # --verify-tag guarantees we attach to the pushed upstream tag, never a tag cut from HEAD.
+            args=(--repo "$GITHUB_REPOSITORY" --title "$title" --notes "Mirrored from upstream release: $url" --verify-tag)
+            if [ "$prerelease" = "true" ]; then args+=(--prerelease); fi
+            GH_TOKEN="$RELEASE_TOKEN" gh release create "$tag" "${args[@]}"
+          done
