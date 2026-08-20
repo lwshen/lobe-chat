@@ -508,6 +508,8 @@ export default {
     'Update the target device client to discover CLI models.',
   'heteroAgent.resumeReset.cwdChanged':
     'Working directory changed. Previous Claude Code session can only be resumed from its original directory, so a new conversation has started.',
+  'heteroAgent.resumeReset.cursorAcpIncompatible':
+    'The previous Cursor session could not be restored through ACP, so a new conversation has started with fresh context.',
   'heteroAgent.resumeReset.resumeFailed':
     'The saved Codex thread could not be resumed safely, so a new conversation has started for this topic.',
   'heteroAgent.switchCwd.cancel': 'Cancel',
@@ -519,6 +521,19 @@ export default {
   'heteroAgent.cloudNotConfigured.desc':
     'Configure your Claude Code token in agent profile to start sending messages.',
   'heteroAgent.cloudNotConfigured.title': 'Cloud credentials required',
+  'heteroAgent.apiMode.configMissing':
+    'Claude Code API mode requires a provider and model binding. Open the agent profile to configure it.',
+  'heteroAgent.apiMode.labDisabled.action': 'Enable in Labs',
+  'heteroAgent.apiMode.labDisabled.desc':
+    'Turn it on in Settings → Labs, or switch this agent to Subscription authentication.',
+  'heteroAgent.apiMode.labDisabled.title': 'Claude Code API mode is a Labs experiment',
+  'heteroAgent.apiMode.localOnly.desc':
+    'Switch the execution environment to Local device, or use Subscription authentication.',
+  'heteroAgent.apiMode.localOnly.title': 'API mode requires Desktop local execution',
+  'heteroAgent.apiMode.modelUnavailable':
+    'The model "{{providerId}}/{{model}}" is disabled or no longer available.',
+  'heteroAgent.apiMode.providerUnavailable':
+    'The provider "{{providerId}}" is disabled or no longer available.',
   'heteroAgent.cloudRepo.sectionTitle': 'Repositories',
   'heteroAgent.cloudRepo.notSet': 'No repo selected',
   'heteroAgent.cloudRepo.noRepos': 'No repositories configured. Add them in agent settings.',
@@ -1842,9 +1857,11 @@ export default {
     'SubAgent conversations are read-only — execution is driven by the parent agent.',
   'terminalPanel.close': 'Close terminal panel',
   'terminalPanel.closeOtherTabs': 'Close other terminals',
+  'terminalPanel.closePane': 'Close pane',
   'terminalPanel.closeTab': 'Close terminal',
   'terminalPanel.createFailed': 'Failed to start the terminal session',
   'terminalPanel.newTab': 'New terminal',
+  'terminalPanel.split': 'Split terminal',
   'terminalPanel.title': 'Terminal',
   'thread.threadMessageCount': '{{messageCount}} messages',
   'thread.title': 'Subtopic',
