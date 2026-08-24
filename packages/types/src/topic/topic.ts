@@ -118,6 +118,8 @@ export interface ChatTopicMetadata {
     summarizedAt: string;
     version: number;
   };
+  /** Restored-history tail used as the source message for eval attempt threads. */
+  evalHistoryTailMessageId?: string;
   bot?: ChatTopicBotContext;
   boundDeviceId?: string;
   cronJobId?: string;
@@ -259,6 +261,16 @@ export interface ChatTopicMetadata {
     operationId: string;
     orchestrationRole?: 'supervisor' | 'member';
     scope?: string;
+    /**
+     * When this run claimed the topic, as an ISO string. This marker gates every
+     * background existing-topic start (`TopicModel.tryReserveTaskCallback`), so
+     * without a liveness stamp a run that dies before clearing it holds the
+     * topic hostage forever.
+     *
+     * Optional for back-compat: markers written before this field existed carry
+     * no stamp and cannot be proven live.
+     */
+    startedAt?: string;
     threadId?: string | null;
   } | null;
   /**

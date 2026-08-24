@@ -526,6 +526,8 @@ export default {
   'heteroAgent.apiMode.agentUnsupported': '{{name}} does not support LobeHub Provider binding.',
   'heteroAgent.apiMode.configMissing':
     'Provider binding requires a provider and model. Open the agent profile to configure it.',
+  'heteroAgent.apiMode.defaultProviderConfigMissing':
+    'LobeHub requires a compatible model. Open the agent profile to select one.',
   'heteroAgent.apiMode.credentialUnsupported':
     'The provider "{{providerId}}" uses an authentication method this agent does not support.',
   'heteroAgent.apiMode.credentialsMissing':
@@ -765,9 +767,9 @@ export default {
   'messages.tokenDetails.outputText': 'Text Output',
   'messages.tokenDetails.outputTitle': 'Output Details',
   'messages.tokenDetails.reasoning': 'Deep Thinking',
-  'messages.tokenDetails.speed.tps.title': 'TPS',
+  'messages.tokenDetails.speed.tps.title': 'tok/s',
   'messages.tokenDetails.speed.tps.tooltip':
-    'Tokens Per Second (TPS). This indicates the average speed of AI-generated content (Tokens/second), calculated from the moment the first Token is received.',
+    'Tokens Per Second (tok/s). This indicates the average speed of AI-generated content (Tokens/second), calculated from the moment the first Token is received.',
   'messages.tokenDetails.speed.ttft.title': 'TTFT',
   'messages.tokenDetails.speed.ttft.tooltip':
     'Time To First Token (TTFT). This refers to the time interval from when you send a message to when the client receives the first Token.',
@@ -1626,6 +1628,12 @@ export default {
   'createGoal.describeHint': 'Describe the outcome first, then complete its execution plan.',
   'createGoal.generateFailed':
     'Could not draft acceptance criteria, so your goal was used as the criterion.',
+  'createGoal.generating': 'Understanding your goal…',
+  'createGoal.generatingAlmostDone': 'Almost done…',
+  'createGoal.generatingCountdown': 'About {{time}} remaining',
+  'createGoal.generatingCriteria': 'Drafting acceptance criteria…',
+  'createGoal.generatingInstruction': 'Writing the execution brief…',
+  'createGoal.generatingReview': 'Checking the complete plan…',
   'createGoal.instructionPlaceholder':
     'Add any context the agent needs — scope, constraints, where to look…',
   'createGoal.next': 'Next',
@@ -1791,6 +1799,7 @@ export default {
   'taskList.empty': 'No tasks yet',
   'taskList.emptyHero.greeting': 'What should we tackle today?',
   'taskList.emptyHero.templatesTitle': 'Templates picked for you',
+  'taskList.form.columns': 'Columns',
   'taskList.form.grouping': 'Grouping',
   'taskList.form.nestedSubTasks': 'Nested sub-tasks',
   'taskList.form.orderCompletedByRecency': 'Sort completed tasks by recency',
@@ -1803,8 +1812,10 @@ export default {
   'taskList.hiddenCompleted.show': 'Show',
   'taskList.hiddenCompleted.suffix': 'hidden by display options',
   'taskList.groupBy.assignee': 'Assignee',
+  'taskList.groupBy.heartbeat': 'Heartbeat',
   'taskList.groupBy.none': 'No grouping',
   'taskList.groupBy.priority': 'Priority',
+  'taskList.groupBy.schedule': 'Schedule',
   'taskList.groupBy.status': 'Status',
   'taskList.orderBy.assignee': 'Assignee',
   'taskList.orderBy.createdAt': 'Created at',
@@ -1812,6 +1823,8 @@ export default {
   'taskList.orderBy.status': 'Status',
   'taskList.orderBy.title': 'Title',
   'taskList.orderBy.updatedAt': 'Updated at',
+  'taskList.scheduled.empty': 'No scheduled tasks yet',
+  'taskList.scheduled.title': 'Scheduled tasks',
   'taskList.title': 'Tasks',
   'taskList.unassigned': 'Unassigned',
   'taskList.unassignedHint': 'Lobe AI will run this task when no assignee is set',

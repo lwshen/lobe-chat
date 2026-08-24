@@ -144,6 +144,7 @@ import type {
   AgentExecutionParams,
   AgentExecutionResult,
   AgentRuntimeServiceOptions,
+  EvalRuntimeContext,
   SubAgentBridgeParams,
 } from '@/server/services/agentRuntime';
 import { AgentRuntimeService } from '@/server/services/agentRuntime';
@@ -413,6 +414,14 @@ interface InternalExecAgentParams extends ExecAgentParams {
   ephemeralUserMessage?: string;
   /** Eval context for injecting environment prompts into system message */
   evalContext?: EvalContext;
+  /** Eval execution controls, such as fixture tool forwarding. */
+  evalRuntime?: EvalRuntimeContext;
+  /**
+   * Restrict this orchestration turn to exactly these plugins. Unlike
+   * `additionalPluginIds`, this excludes the agent's pinned and default tools
+   * as well as activator-discoverable manifests.
+   */
+  exclusivePluginIds?: string[];
   /** External files to upload to S3 and attach to the user message */
   files?: Array<{
     /** Pre-downloaded buffer (from adapter/platform layer) */
@@ -429,6 +438,14 @@ interface InternalExecAgentParams extends ExecAgentParams {
   hooks?: AgentHook[];
   /** Initial step count offset for resumed operations (accumulated from previous runs) */
   initialStepCount?: number;
+  /**
+   * This start came from a person waiting at a composer, not from a background
+   * producer (task callback, cron, bot, API). Interactive starts serialize only
+   * on the short topic-start reservation and never on `runningOperation` — the
+   * client already owns "one foreground turn at a time" with a queue and a UI,
+   * and a refusal here destroys the message before it is ever persisted.
+   */
+  interactiveStart?: boolean;
   /** Maximum steps for the agent operation */
   maxSteps?: number;
   /**
@@ -1336,6 +1353,7 @@ export class AiAgentService {
     const reserved = await acquireTopicStartReservation({
       replacesOperationId: params.replacesOperationId,
       allowRunningOperationId: params.topicStartOwnerOperationId,
+      ignoreRunningOperation: params.interactiveStart,
       reservationId,
       topicId,
       topicModel: this.topicModel,
@@ -1357,6 +1375,7 @@ export class AiAgentService {
   ): Promise<ExecAgentResult> {
     const {
       additionalPluginIds,
+      exclusivePluginIds,
       agentId,
       slug,
       prompt,
@@ -1385,6 +1404,7 @@ export class AiAgentService {
       cronJobId,
       taskId,
       evalContext,
+      evalRuntime,
       maxSteps,
       disableLocalSystem,
       initialStepCount,
@@ -2521,6 +2541,7 @@ export class AiAgentService {
       const childOperation = {
         assistantMessageId: assistantMessageRecord.id,
         hooks: serializedHooks,
+        startedAt: new Date().toISOString(),
         ...(isRemoteHetero && remoteDeviceId
           ? {
               deviceId: remoteDeviceId,
@@ -3090,16 +3111,18 @@ export class AiAgentService {
     // `additionalPluginIds` so a mentioned-but-not-pinned tool (e.g. a custom MCP
     // connector) is both queried for manifests and enabled by the tools engine.
     const isGoalTurn = isGoalPrompt(prompt);
-    let agentPlugins: string[] = isGoalTurn
-      ? [GoalIdentifier]
-      : [
-          ...new Set([
-            ...getActivePluginIds(agentConfig?.plugins),
-            ...(additionalPluginIds || []),
-            ...(selectedToolIds || []),
-            ...(hasMentionedAgents ? ['lobe-agent-management'] : []),
-          ]),
-        ];
+    let agentPlugins: string[] = exclusivePluginIds
+      ? [...new Set(exclusivePluginIds)]
+      : isGoalTurn
+        ? [GoalIdentifier]
+        : [
+            ...new Set([
+              ...getActivePluginIds(agentConfig?.plugins),
+              ...(additionalPluginIds || []),
+              ...(selectedToolIds || []),
+              ...(hasMentionedAgents ? ['lobe-agent-management'] : []),
+            ]),
+          ];
 
     // Model metadata is needed both for tool support checks and agent-management context.
     const { loadModels } = await import('@/business/client/model-bank/loadModels');
@@ -3736,18 +3759,20 @@ export class AiAgentService {
       });
 
       // 5f. Generate tools and manifest map
-      const pluginIds = [
-        ...new Set([
-          ...agentPlugins,
-          ...(disableLocalSystem ? [] : [LocalSystemManifest.identifier]),
-          RemoteDeviceManifest.identifier,
-          // Include LobeHub Skills and Composio tools so they are passed to generateToolsDetailed
-          ...activeLobehubSkillManifests.map((m) => m.identifier),
-          ...activeComposioManifests.map((m) => m.identifier),
-          // Connector manifests are also injected as additionalManifests
-          ...activeConnectorManifests.map((m) => m.identifier),
-        ]),
-      ];
+      const pluginIds = exclusivePluginIds
+        ? agentPlugins
+        : [
+            ...new Set([
+              ...agentPlugins,
+              ...(disableLocalSystem ? [] : [LocalSystemManifest.identifier]),
+              RemoteDeviceManifest.identifier,
+              // Include LobeHub Skills and Composio tools so they are passed to generateToolsDetailed
+              ...activeLobehubSkillManifests.map((m) => m.identifier),
+              ...activeComposioManifests.map((m) => m.identifier),
+              // Connector manifests are also injected as additionalManifests
+              ...activeConnectorManifests.map((m) => m.identifier),
+            ]),
+          ];
       log('execAgent: agent configured plugins: %O', pluginIds);
 
       const isManualMode = agentConfig.chatConfig?.skillActivateMode === 'manual';
@@ -3756,6 +3781,7 @@ export class AiAgentService {
         excludeDefaultToolIds: isManualMode ? manualModeExcludeToolIds : undefined,
         model,
         provider,
+        skipDefaultTools: !!exclusivePluginIds,
         toolIds: pluginIds,
       });
 
@@ -3778,6 +3804,7 @@ export class AiAgentService {
       // Enforced here (not as a point deletion after the seed) so the later
       // Skill/Composio ingest loops cannot re-add the identifier.
       const isManifestIngestAllowed = (identifier: string): boolean => {
+        if (exclusivePluginIds && !exclusivePluginIds.includes(identifier)) return false;
         if (disabledPluginIdSet.has(identifier)) return false;
         if (!canUseDevice && isDeviceToolIdentifier(identifier)) return false;
         if (deviceLocked && REMOTE_DEVICE_TOOL_IDENTIFIERS.has(identifier)) return false;
@@ -4801,6 +4828,7 @@ export class AiAgentService {
         deviceAccessPolicy: { canUseDevice, reason: deviceAccessReason },
         discordContext,
         evalContext,
+        evalRuntime,
         enableExpertise,
         expertise,
         initialContext,
@@ -4850,6 +4878,9 @@ export class AiAgentService {
             assistantMessageId: assistantMessageRecord.id,
             operationId,
             scope: appContext?.scope ?? undefined,
+            // Liveness stamp — without it this marker can never be proven dead
+            // and would hold the topic against background starts forever.
+            startedAt: new Date().toISOString(),
             threadId: appContext?.threadId ?? undefined,
           },
         });

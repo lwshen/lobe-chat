@@ -12,6 +12,7 @@ import {
   resolveAgencyConfig,
   resolveAgentAgencyConfig,
   resolveAgentTopicSharePolicy,
+  unwrapServerDefaultHeterogeneousModel,
 } from './agencyConfig';
 import {
   AMP_AGENT_MODES,
@@ -32,6 +33,23 @@ describe('server-default heterogeneous model request', () => {
     expect(isServerDefaultHeterogeneousModel('lobehub/gpt-5.4', 'gpt-5.4')).toBe(true);
     expect(isServerDefaultHeterogeneousModel('lobehub-default', 'gpt-5.4')).toBe(false);
     expect(isServerDefaultHeterogeneousModel('lobehub/gpt-5.5', 'gpt-5.4')).toBe(false);
+  });
+
+  it('unwraps namespaced CLI reports and the legacy Claude Code alias', () => {
+    expect(unwrapServerDefaultHeterogeneousModel('lobehub/claude-sonnet-4-6')).toBe(
+      'claude-sonnet-4-6',
+    );
+    expect(unwrapServerDefaultHeterogeneousModel('lobehub/gpt-5.4', 'ignored')).toBe('gpt-5.4');
+    expect(unwrapServerDefaultHeterogeneousModel('lobehub-default', 'claude-sonnet-4-6')).toBe(
+      'claude-sonnet-4-6',
+    );
+    expect(unwrapServerDefaultHeterogeneousModel('lobehub-default')).toBe('lobehub-default');
+    expect(unwrapServerDefaultHeterogeneousModel('claude-opus-4-6', 'claude-sonnet-4-6')).toBe(
+      'claude-opus-4-6',
+    );
+    expect(unwrapServerDefaultHeterogeneousModel(undefined, 'claude-sonnet-4-6')).toBe(
+      'claude-sonnet-4-6',
+    );
   });
 });
 
@@ -608,6 +626,12 @@ describe('codex reasoning effort capabilities', () => {
     expect(getCodexReasoningEffortLevels('gpt-5.6-sol')).toEqual(ultraLevels);
     expect(getCodexReasoningEffortLevels('gpt-5.6-terra')).toEqual(ultraLevels);
     expect(getCodexReasoningEffortLevels('gpt-5.6-luna')).toEqual(maxLevels);
+  });
+
+  it('uses the model-specific levels supported by custom server-default models', () => {
+    expect(getCodexReasoningEffortLevels('deepseek-v4-flash')).toEqual(['low', 'high', 'max']);
+    expect(getCodexReasoningEffortLevels('deepseek-v4-pro')).toEqual(['low', 'high', 'max']);
+    expect(getCodexReasoningEffortLevels('glm-5.2')).toEqual(['high', 'max']);
   });
 
   it('uses conservative common levels for old, unknown, and default models', () => {
