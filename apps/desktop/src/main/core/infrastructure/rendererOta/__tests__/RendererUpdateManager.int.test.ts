@@ -1,7 +1,9 @@
+import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +12,7 @@ import { readPointer } from '../pointer';
 
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
 const PUBLIC_KEY_PEM = publicKey.export({ format: 'pem', type: 'spki' }).toString();
+const APP_VERSION = '1.0.0';
 const MAIN_HASH = 'a'.repeat(64);
 const SERVER = 'https://updates.test';
 
@@ -20,7 +23,7 @@ const { updaterConfigMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('electron', () => ({
-  app: { getPath: () => userDataDir },
+  app: { getPath: () => userDataDir, getVersion: () => APP_VERSION },
 }));
 vi.mock('@/const/dir', () => ({
   get rendererDir() {
@@ -33,7 +36,7 @@ vi.mock('@/modules/updater/configs', () => ({
     return updaterConfigMock.buildChannel;
   },
   UPDATE_CHANNEL: 'stable',
-  UPDATE_SERVER_URL: 'https://updates.test',
+  UPDATE_SERVER_URL: 'https://updates.test/stable',
   coerceStoredUpdateChannel: (channel?: string) => (channel === 'canary' ? 'canary' : 'stable'),
 }));
 vi.mock('@/utils/logger', () => ({
@@ -70,7 +73,7 @@ const buildFeed = (version: string, files: Record<string, string>) => {
     return { path: filePath, sha256, size: content.byteLength };
   });
   const manifest = signManifest({
-    appVersion: '1.0.0',
+    appVersion: APP_VERSION,
     files: manifestFiles,
     mainHash: MAIN_HASH,
     version,
@@ -85,7 +88,7 @@ const stubFetch = (
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
-      if (url === `${SERVER}/renderer/${channel}/${MAIN_HASH}/latest.json`) {
+      if (url === `${SERVER}/${channel}/${APP_VERSION}/renderer/latest.json`) {
         if (!feed) return new Response('nope', { status: 404 });
         return Response.json(feed.manifest);
       }
@@ -96,6 +99,15 @@ const stubFetch = (
     }),
   );
 };
+
+const hasZstd = (() => {
+  try {
+    execFileSync('zstd', ['-V'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 const loadManager = async (app: ReturnType<typeof makeApp>) => {
   vi.resetModules();
@@ -145,6 +157,7 @@ describe('RendererUpdateManager full path', () => {
     });
 
     const fetchedUrls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(fetchedUrls[0]).toBe(`${SERVER}/stable/${APP_VERSION}/renderer/latest.json`);
     const casFetches = fetchedUrls.filter((u: string) => u.includes('/renderer/files/'));
     expect(casFetches).toHaveLength(4);
 
@@ -171,6 +184,108 @@ describe('RendererUpdateManager full path', () => {
     );
     await manager.checkForUpdates();
     expect(readPointer(otaDir, MAIN_HASH).staged).toBe('r2');
+  });
+
+  it.skipIf(!hasZstd)('downloads only zstd patches when a delta from r0 applies', async () => {
+    const app = makeApp();
+    const oldChunk = Buffer.alloc(32 * 1024, 7);
+    writeFileSync(path.join(builtinDir, 'chunk.bin'), oldChunk);
+
+    const newChunk = Buffer.from(oldChunk);
+    newChunk[10] = 9;
+    const dir = mkdtempSync(path.join(tmpdir(), 'ota-delta-'));
+    const oldPath = path.join(dir, 'old.bin');
+    const newPath = path.join(dir, 'new.bin');
+    const patchPath = path.join(dir, 'patch.zst');
+    writeFileSync(oldPath, oldChunk);
+    writeFileSync(newPath, newChunk);
+    execFileSync('zstd', ['--patch-from', oldPath, '-19', '-q', '-f', newPath, '-o', patchPath]);
+    const patch = readFileSync(patchPath);
+
+    const manager = await loadManager(app);
+    manager.initialize();
+
+    const feed = buildFeed('r1', {
+      'apps/desktop/index.html': entryHtml('v1'),
+      'assets/entry-e2e.js': 'console.log("v1")',
+      'chunk.bin': newChunk.toString('latin1'),
+      'shared.js': 'shared-content',
+    });
+    const chunkFile = feed.manifest.files.find((f) => f.path === 'chunk.bin');
+    const sharedFile = feed.manifest.files.find((f) => f.path === 'shared.js');
+    if (!chunkFile || !sharedFile) throw new Error('expected files');
+    const patchSha = sha256File(patch);
+    feed.cas.set(patchSha, patch);
+    feed.cas.set(chunkFile.sha256, newChunk);
+    const { signature: _ignored, ...unsigned } = feed.manifest;
+    feed.manifest = signManifest({
+      ...unsigned,
+      deltas: [
+        {
+          fromVersion: 'r0',
+          ops: [
+            { op: 'copy', path: 'shared.js', sha256: sharedFile.sha256 },
+            {
+              fromSha256: sha256File(oldChunk),
+              op: 'patch',
+              patchSha256: patchSha,
+              patchSize: patch.byteLength,
+              path: 'chunk.bin',
+              sha256: chunkFile.sha256,
+              size: newChunk.byteLength,
+            },
+            ...feed.manifest.files
+              .filter((f) => f.path !== 'shared.js' && f.path !== 'chunk.bin')
+              .map((f) => ({ op: 'full' as const, path: f.path, sha256: f.sha256, size: f.size })),
+          ],
+        },
+      ],
+    });
+
+    stubFetch(feed);
+    await manager.checkForUpdates();
+
+    const fetchedUrls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    const casFetches = fetchedUrls.filter((u: string) => u.includes('/renderer/files/'));
+    expect(casFetches).toContain(`${SERVER}/stable/${APP_VERSION}/renderer/files/${patchSha}.bin`);
+    expect(casFetches).not.toContain(
+      `${SERVER}/stable/${APP_VERSION}/renderer/files/${sharedFile.sha256}.bin`,
+    );
+    expect(readPointer(channelDir(), MAIN_HASH).staged).toBe('r1');
+    expect(readFileSync(path.join(channelDir(), 'versions', 'r1', 'chunk.bin'))).toEqual(newChunk);
+  });
+
+  it('accepts gzip-compressed CAS objects when Content-Encoding is missing', async () => {
+    const app = makeApp();
+    const manager = await loadManager(app);
+    manager.initialize();
+
+    const feed = buildFeed('r1', {
+      'apps/desktop/index.html': entryHtml('v1'),
+      'assets/entry-e2e.js': 'console.log("v1")',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === `${SERVER}/stable/${APP_VERSION}/renderer/latest.json`) {
+          return Response.json(feed.manifest);
+        }
+        const match = /\/renderer\/files\/([0-9a-f]{64})\.bin$/.exec(url);
+        const content = match && feed.cas.get(match[1]);
+        if (content) return new Response(new Uint8Array(gzipSync(content)));
+        return new Response('nope', { status: 404 });
+      }),
+    );
+
+    await manager.checkForUpdates();
+
+    expect(readPointer(channelDir(), MAIN_HASH).staged).toBe('r1');
+    expect(
+      readFileSync(
+        path.join(channelDir(), 'versions', 'r1', 'apps', 'desktop', 'index.html'),
+        'utf8',
+      ),
+    ).toBe(entryHtml('v1'));
   });
 
   it('rejects a manifest signed by a foreign key', async () => {

@@ -16,16 +16,21 @@ import {
 import { createLogger } from '@/utils/logger';
 
 import type { App } from '../../App';
+import { decodeCasPayload } from './casPayload';
+import { canApplyDelta, indexLocalByHash, pickDelta } from './deltaFeed';
 import {
   diffManifest,
   findMissingEntryAssets,
   isValidManifestShape,
   patchNumber,
+  type RendererDelta,
   type RendererManifest,
+  type RendererManifestFile,
   sha256File,
   verifyManifestSignature,
 } from './manifest';
 import { emptyPointer, type OtaPointer, readPointer, writePointer } from './pointer';
+import { applyZstdPatch } from './zstdPatch';
 
 const logger = createLogger('core:RendererUpdateManager');
 
@@ -34,8 +39,11 @@ const LOAD_PING_TIMEOUT = 3000;
 const MAX_BOOT_CRASHES = 2;
 const CHECK_INTERVAL = 60 * 60 * 1000;
 
+const APP_VERSION = electronApp.getVersion();
 const MAIN_HASH = process.env.MAIN_HASH || '';
 const PUBLIC_KEY = process.env.RENDERER_OTA_PUBLIC_KEY || '';
+const UPDATE_SERVER_BASE_URL =
+  UPDATE_SERVER_URL?.replace(/\/(stable|nightly|canary|beta)\/?$/, '').replace(/\/$/, '') || '';
 // Local e2e escape hatches (never set in packaged builds): force-enable in
 // dev and shorten the first scheduled check.
 const FORCE_IN_DEV = process.env['RENDERER_OTA_FORCE'] === '1';
@@ -191,7 +199,8 @@ export class RendererUpdateManager {
     this.state = 'checking';
 
     try {
-      const manifest = await this.fetchManifest(channel);
+      const rendererUrl = this.rendererUrl(channel);
+      const manifest = await this.fetchManifest(rendererUrl);
       if (!manifest || generation !== this.checkGeneration) return;
 
       const currentN = pointer.current ? patchNumber(pointer.current) : 0;
@@ -204,7 +213,7 @@ export class RendererUpdateManager {
       }
 
       this.state = 'downloading';
-      await this.downloadAndStage(manifest, otaDir, pointer);
+      await this.downloadAndStage(manifest, otaDir, pointer, rendererUrl);
       if (generation !== this.checkGeneration) return;
 
       this.stagedManifest = manifest;
@@ -230,54 +239,52 @@ export class RendererUpdateManager {
     return BUILD_CHANNEL === 'beta' && channel === 'canary' ? 'beta' : channel;
   }
 
-  private feedUrl(channel: RendererOtaChannel) {
-    return `${UPDATE_SERVER_URL}/renderer/${channel}/${MAIN_HASH}/latest.json`;
+  private rendererUrl(channel: RendererOtaChannel) {
+    return `${UPDATE_SERVER_BASE_URL}/${channel}/${APP_VERSION}/renderer`;
   }
 
-  private fileUrl(sha256: string) {
-    return `${UPDATE_SERVER_URL}/renderer/files/${sha256}.bin`;
+  private fileUrl(rendererUrl: string, sha256: string) {
+    return `${rendererUrl}/files/${sha256}.bin`;
   }
 
-  private async fetchManifest(channel: RendererOtaChannel): Promise<RendererManifest | null> {
-    const res = await fetch(this.feedUrl(channel), { cache: 'no-store' });
+  private async fetchManifest(rendererUrl: string): Promise<RendererManifest | null> {
+    const res = await fetch(`${rendererUrl}/latest.json`, { cache: 'no-store' });
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`Manifest fetch failed: ${res.status}`);
 
     const raw = await res.json();
     if (!isValidManifestShape(raw)) throw new Error('Manifest shape invalid');
+    if (raw.appVersion !== APP_VERSION) throw new Error('Manifest appVersion mismatch');
     if (raw.mainHash !== MAIN_HASH) throw new Error('Manifest mainHash mismatch');
     if (!verifyManifestSignature(raw, PUBLIC_KEY)) throw new Error('Manifest signature invalid');
     return raw;
   }
 
-  private async downloadAndStage(manifest: RendererManifest, otaDir: string, pointer: OtaPointer) {
+  private async downloadAndStage(
+    manifest: RendererManifest,
+    otaDir: string,
+    pointer: OtaPointer,
+    rendererUrl: string,
+  ) {
     const stagingRoot = path.join(otaDir, 'staging');
     rmSync(stagingRoot, { force: true, recursive: true });
     const stagingDir = path.join(stagingRoot, manifest.version);
     mkdirSync(stagingDir, { recursive: true });
 
-    const { missing, reusable } = diffManifest(manifest, await this.hashLocalTree(otaDir, pointer));
-    logger.info(
-      `Renderer ${manifest.version}: ${reusable.length} files reused, ${missing.length} to download`,
-    );
+    const localHashes = await this.hashLocalTree(otaDir, pointer);
+    const byHash = indexLocalByHash(localHashes);
+    const localVersion = pointer.current ?? 'r0';
+    const delta = pickDelta(manifest, localVersion);
 
-    for (const { file, localPath } of reusable) {
-      const target = path.join(stagingDir, file.path);
-      await mkdir(path.dirname(target), { recursive: true });
-      try {
-        await link(localPath, target);
-      } catch {
-        await copyFile(localPath, target);
-      }
-    }
-
-    for (const file of missing) {
-      const res = await fetch(this.fileUrl(file.sha256));
-      if (!res.ok) throw new Error(`Asset fetch failed (${res.status}): ${file.path}`);
-      const content = Buffer.from(await res.arrayBuffer());
-      const target = path.join(stagingDir, file.path);
-      await mkdir(path.dirname(target), { recursive: true });
-      await writeFile(target, content);
+    if (delta && canApplyDelta(delta, byHash)) {
+      logger.info(`Renderer ${manifest.version}: applying delta from ${delta.fromVersion}`);
+      await this.stageDelta(delta, stagingDir, byHash, rendererUrl);
+    } else {
+      const { missing, reusable } = diffManifest(manifest, localHashes);
+      logger.info(
+        `Renderer ${manifest.version}: ${reusable.length} files reused, ${missing.length} to download`,
+      );
+      await this.stageCas(stagingDir, missing, reusable, rendererUrl);
     }
 
     for (const file of manifest.files) {
@@ -301,6 +308,76 @@ export class RendererUpdateManager {
     rmSync(finalDir, { force: true, recursive: true });
     renameSync(stagingDir, finalDir);
     rmSync(stagingRoot, { force: true, recursive: true });
+  }
+
+  private async stageCas(
+    stagingDir: string,
+    missing: RendererManifestFile[],
+    reusable: Array<{ file: RendererManifestFile; localPath: string }>,
+    rendererUrl: string,
+  ) {
+    for (const { file, localPath } of reusable) {
+      await this.placeLocalFile(localPath, path.join(stagingDir, file.path));
+    }
+    for (const file of missing) {
+      await this.writeStaged(
+        stagingDir,
+        file.path,
+        await this.fetchCas(rendererUrl, file.sha256, file.path),
+      );
+    }
+  }
+
+  private async stageDelta(
+    delta: RendererDelta,
+    stagingDir: string,
+    byHash: Map<string, string>,
+    rendererUrl: string,
+  ) {
+    for (const op of delta.ops) {
+      const target = path.join(stagingDir, op.path);
+      if (op.op === 'copy') {
+        const localPath = byHash.get(op.sha256);
+        if (!localPath) throw new Error(`Delta copy missing local ${op.sha256}`);
+        await this.placeLocalFile(localPath, target);
+        continue;
+      }
+      if (op.op === 'full') {
+        await this.writeStaged(
+          stagingDir,
+          op.path,
+          await this.fetchCas(rendererUrl, op.sha256, op.path),
+        );
+        continue;
+      }
+      const localPath = byHash.get(op.fromSha256);
+      if (!localPath) throw new Error(`Delta patch missing base ${op.fromSha256}`);
+      const oldContent = await readFile(localPath);
+      const patch = await this.fetchCas(rendererUrl, op.patchSha256, op.path);
+      const next = await applyZstdPatch(oldContent, patch);
+      await this.writeStaged(stagingDir, op.path, next);
+    }
+  }
+
+  private async placeLocalFile(localPath: string, target: string) {
+    await mkdir(path.dirname(target), { recursive: true });
+    try {
+      await link(localPath, target);
+    } catch {
+      await copyFile(localPath, target);
+    }
+  }
+
+  private async writeStaged(stagingDir: string, relPath: string, content: Buffer) {
+    const target = path.join(stagingDir, relPath);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, content);
+  }
+
+  private async fetchCas(rendererUrl: string, sha256: string, label: string) {
+    const res = await fetch(this.fileUrl(rendererUrl, sha256));
+    if (!res.ok) throw new Error(`Asset fetch failed (${res.status}): ${label}`);
+    return decodeCasPayload(Buffer.from(await res.arrayBuffer()));
   }
 
   private async hashLocalTree(otaDir: string, pointer: OtaPointer): Promise<Map<string, string>> {

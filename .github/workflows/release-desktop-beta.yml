@@ -69,6 +69,15 @@ jobs:
           fi
           echo "cloud_ref=$cloud_ref" >> "$GITHUB_OUTPUT"
 
+  renderer-ota:
+    name: Publish Renderer OTA
+    needs: [check-beta]
+    if: needs.check-beta.outputs.is_beta == 'true'
+    uses: ./.github/workflows/release-desktop-renderer-ota.yml
+    with:
+      channel: beta
+    secrets: inherit
+
   test:
     name: Code quality check
     needs: [check-beta]
@@ -174,7 +183,9 @@ jobs:
         uses: ./.github/actions/desktop-upload-artifacts
         with:
           artifact-name: release-${{ matrix.os }}
+          renderer-ota-private-key: ${{ secrets.RENDERER_OTA_PRIVATE_KEY }}
           renderer-ota-public-key: ${{ secrets.RENDERER_OTA_PUBLIC_KEY }}
+          update-channel: beta
 
   # 汇总门禁: test/build 完成后决定是否继续
   gate:

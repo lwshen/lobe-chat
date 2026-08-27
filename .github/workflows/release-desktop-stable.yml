@@ -135,6 +135,15 @@ jobs:
           fi
           echo "cloud_ref=$cloud_ref" >> "$GITHUB_OUTPUT"
 
+  renderer-ota:
+    name: Publish Renderer OTA
+    needs: [check-stable]
+    if: ${{ needs.check-stable.outputs.is_stable == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.skip_s3_upload) }}
+    uses: ./.github/workflows/release-desktop-renderer-ota.yml
+    with:
+      channel: stable
+    secrets: inherit
+
   # ============================================
   # 配置构建矩阵 (检查自托管 Runner)
   # ============================================
@@ -283,7 +292,9 @@ jobs:
         uses: ./.github/actions/desktop-upload-artifacts
         with:
           artifact-name: release-${{ matrix.name }}
+          renderer-ota-private-key: ${{ secrets.RENDERER_OTA_PRIVATE_KEY }}
           renderer-ota-public-key: ${{ secrets.RENDERER_OTA_PUBLIC_KEY }}
+          update-channel: stable
 
   # ============================================
   # 合并 macOS 多架构文件

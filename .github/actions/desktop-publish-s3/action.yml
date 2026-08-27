@@ -199,5 +199,26 @@ runs:
           --arg version "$VERSION" \
           '{ cloudRef: $cloudRef, mainHash: $mainHash, version: $version }' \
           > /tmp/renderer-ota-base.json
-        aws s3 cp /tmp/renderer-ota-base.json "s3://$S3_BUCKET/renderer/$CHANNEL/base.json" \
+
+        RENDERER_ROOT="release/renderer-ota/$CHANNEL/$VERSION/renderer"
+        LATEST="$RENDERER_ROOT/latest.json"
+        SNAPSHOT="$RENDERER_ROOT/versions/r0.json"
+        if [ ! -d "$RENDERER_ROOT/files" ] || [ ! -f "$LATEST" ] || [ ! -f "$SNAPSHOT" ]; then
+          echo "Renderer OTA r0 artifacts are incomplete"
+          exit 1
+        fi
+
+        S3_RENDERER_ROOT="s3://$S3_BUCKET/$CHANNEL/$VERSION/renderer"
+        aws s3 sync "$RENDERER_ROOT/files" "$S3_RENDERER_ROOT/files" \
+          --size-only \
+          --content-encoding gzip \
+          --content-type application/octet-stream \
+          --cache-control public,max-age=31536000,immutable \
+          $ENDPOINT_ARG
+        aws s3 cp "$SNAPSHOT" "$S3_RENDERER_ROOT/versions/r0.json" \
           --cache-control no-store $ENDPOINT_ARG
+        aws s3 cp "$LATEST" "$S3_RENDERER_ROOT/latest.json" \
+          --cache-control no-store $ENDPOINT_ARG
+        aws s3 cp /tmp/renderer-ota-base.json "s3://$S3_BUCKET/$CHANNEL/base.json" \
+          --cache-control no-store $ENDPOINT_ARG
+        echo "Published renderer OTA r0 for $CHANNEL/$VERSION"
