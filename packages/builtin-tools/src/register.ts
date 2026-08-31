@@ -22,8 +22,13 @@ import {
   AgentManagementRenders,
   AgentManagementStreamings,
 } from '@lobechat/builtin-tool-agent-management/client';
-import { BrowserManifest, BrowserRenders } from '@lobechat/builtin-tool-browser/client';
 import {
+  BrowserInspectors,
+  BrowserManifest,
+  BrowserRenders,
+} from '@lobechat/builtin-tool-browser/client';
+import {
+  ClaudeCodeApiName,
   ClaudeCodeIdentifier,
   ClaudeCodeInspectors,
   ClaudeCodeInterventions,
@@ -177,6 +182,7 @@ import { registerBuiltinRenders } from './renders';
 import { registerBuiltinStreamings } from './streamings';
 import { TwitterIdentifier, TwitterInspectors } from './twitter';
 
+const DROID_IDENTIFIER = 'droid';
 const QODER_IDENTIFIER = 'qoder';
 const OPENCODE_IDENTIFIER = 'opencode';
 const PI_IDENTIFIER = 'pi';
@@ -214,6 +220,9 @@ export const registerBuiltinToolSurfaces = (): void => {
     [AgentDocumentsManifest.identifier]: AgentDocumentsRenders as Record<string, BuiltinRender>,
     [AgentManagementManifest.identifier]: AgentManagementRenders as Record<string, BuiltinRender>,
     [ClaudeCodeIdentifier]: ClaudeCodeRenders as Record<string, BuiltinRender>,
+    [DROID_IDENTIFIER]: {
+      [ClaudeCodeApiName.AskUserQuestion]: ClaudeCodeRenders[ClaudeCodeApiName.AskUserQuestion],
+    },
     [QODER_IDENTIFIER]: ClaudeCodeRenders as Record<string, BuiltinRender>,
     [CloudSandboxManifest.identifier]: CloudSandboxRenders as Record<string, BuiltinRender>,
     [GroupAgentBuilderManifest.identifier]: GroupAgentBuilderRenders as Record<
@@ -260,6 +269,9 @@ export const registerBuiltinToolSurfaces = (): void => {
       BuiltinInspector
     >,
     [ClaudeCodeIdentifier]: ClaudeCodeInspectors as Record<string, BuiltinInspector>,
+    [DROID_IDENTIFIER]: {
+      [ClaudeCodeApiName.AskUserQuestion]: ClaudeCodeInspectors[ClaudeCodeApiName.AskUserQuestion],
+    },
     [QODER_IDENTIFIER]: ClaudeCodeInspectors as Record<string, BuiltinInspector>,
     [CloudSandboxManifest.identifier]: CloudSandboxInspectors as Record<string, BuiltinInspector>,
     [GroupAgentBuilderManifest.identifier]: GroupAgentBuilderInspectors as Record<
@@ -277,6 +289,7 @@ export const registerBuiltinToolSurfaces = (): void => {
     >,
     [KnowledgeBaseManifest.identifier]: KnowledgeBaseInspectors as Record<string, BuiltinInspector>,
     [LobeAgentManifest.identifier]: LobeAgentInspectors as Record<string, BuiltinInspector>,
+    [BrowserManifest.identifier]: BrowserInspectors as Record<string, BuiltinInspector>,
     [LocalSystemManifest.identifier]: LocalSystemInspectors as Record<string, BuiltinInspector>,
     [MemoryManifest.identifier]: MemoryInspectors as Record<string, BuiltinInspector>,
     [MessageManifest.identifier]: MessageInspectors as Record<string, BuiltinInspector>,
@@ -337,6 +350,10 @@ export const registerBuiltinToolSurfaces = (): void => {
       BuiltinIntervention
     >,
     [ClaudeCodeIdentifier]: ClaudeCodeInterventions as Record<string, BuiltinIntervention>,
+    [DROID_IDENTIFIER]: {
+      [ClaudeCodeApiName.AskUserQuestion]:
+        ClaudeCodeInterventions[ClaudeCodeApiName.AskUserQuestion],
+    },
     [QODER_IDENTIFIER]: ClaudeCodeInterventions as Record<string, BuiltinIntervention>,
     [CloudSandboxManifest.identifier]: CloudSandboxInterventions as Record<
       string,

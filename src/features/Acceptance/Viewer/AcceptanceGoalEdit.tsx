@@ -1,12 +1,11 @@
 'use client';
 
-import { ActionIcon } from '@lobehub/ui';
-import { toast } from '@lobehub/ui/base-ui';
+import { ActionIcon, toast } from '@lobehub/ui/base-ui';
 import { PencilLine } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { mutate as globalMutate } from '@/libs/swr';
-import { verifyKeys } from '@/libs/swr/keys';
+import { isAcceptanceListKey } from '@/libs/swr/keys';
 import { verifyService } from '@/services/verify';
 
 import { useAcceptanceScope } from './AcceptanceScope';
@@ -31,7 +30,7 @@ const AcceptanceGoalEdit = () => {
           throw cause;
         }
         await mutate();
-        void globalMutate(verifyKeys.acceptances());
+        void globalMutate(isAcceptanceListKey);
       },
     });
   };

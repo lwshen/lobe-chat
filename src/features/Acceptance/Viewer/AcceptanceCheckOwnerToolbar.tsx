@@ -1,13 +1,12 @@
 'use client';
 
-import { ActionIcon } from '@lobehub/ui';
-import { toast } from '@lobehub/ui/base-ui';
+import { ActionIcon, toast } from '@lobehub/ui/base-ui';
 import { Plus, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { mutate as globalMutate } from '@/libs/swr';
-import { verifyKeys } from '@/libs/swr/keys';
+import { isAcceptanceListKey } from '@/libs/swr/keys';
 import { verifyService } from '@/services/verify';
 
 import { useAcceptanceScope } from './AcceptanceScope';
@@ -36,7 +35,7 @@ const AcceptanceCheckOwnerToolbar = () => {
   const saveStanding = async (checklist: typeof standing) => {
     await verifyService.saveAcceptanceChecklist(data.subject.type, data.subject.id, checklist);
     await mutate();
-    void globalMutate(verifyKeys.acceptances());
+    void globalMutate(isAcceptanceListKey);
     toast.success(t('acceptance.checkCreate.saved'));
   };
 

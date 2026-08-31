@@ -7,19 +7,8 @@ import type {
   ReviewAdjudication,
   ReviewProposalEdit,
 } from '@lobechat/types';
-import {
-  ActionIcon,
-  copyToClipboard,
-  Empty,
-  Flexbox,
-  Icon,
-  Image,
-  Tag,
-  Text,
-  TextArea,
-  Tooltip,
-} from '@lobehub/ui';
-import { Button } from '@lobehub/ui/base-ui';
+import { copyToClipboard, Empty, Flexbox, Icon, Image, TextArea, Tooltip } from '@lobehub/ui';
+import { ActionIcon, Button, Tag, Text } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar, cx } from 'antd-style';
 import dayjs from 'dayjs';
 import {
@@ -266,6 +255,9 @@ const styles = createStaticStyles(({ css }) => ({
      long checklist read as a boxed-in panel rather than a dense inventory. */
   groupCard: css`
     background: ${cssVar.colorBgContainer};
+  `,
+  groupedCard: css`
+    padding-inline: 12px;
   `,
   groupHeader: css`
     cursor: pointer;
@@ -1838,7 +1830,7 @@ const CheckList = memo<CheckListProps>(
     }
 
     return (
-      <Flexbox className={styles.groupCard}>
+      <Flexbox className={cx(styles.groupCard, styles.groupedCard)}>
         {groups.map(({ checks: groupChecks_, key, label, rows }, groupIndex) => {
           const passed = groupChecks_.filter((check) => check.state === 'passed').length;
           const collapsed = collapsedGroups.has(key);
