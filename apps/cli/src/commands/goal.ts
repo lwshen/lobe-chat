@@ -82,12 +82,21 @@ export function registerGoalCommand(program: Command) {
     .command('create <title>')
     .description('Create a standalone goal and seed its graph')
     .option('-r, --requirement <text>', 'Acceptance requirement')
-    .option('-w, --work <title...>', 'Initial work node titles')
+    .option(
+      '-i, --instruction <text>',
+      "The ask in the user's own words, shown on the problem node",
+    )
+    .option('-w, --work <title...>', 'Initial work node titles (omit to let the planner decompose)')
     .option('--agent <id>', 'Responsible agent ID')
     .option('--project <id>', 'Project ID')
     .option('--max-rounds <n>', 'Maximum goal rounds')
     .option('--max-cost <usd>', 'Maximum total cost in USD')
     .option('--max-attempts-per-work <n>', 'Attempts per Work before opening a decision gate')
+    .option(
+      '--max-concurrent-tasks <n>',
+      "How many of this goal's tasks may run at once (default 3)",
+    )
+
     .option('--max-steps-per-run <n>', 'Optional agent step cap per Work run (for example 500)')
     .option(
       '--operation-lease-timeout-ms <n>',
@@ -100,8 +109,14 @@ export function registerGoalCommand(program: Command) {
       const result = await client.goal.create.mutate({
         agentId: options.agent,
         config:
-          options.maxAttemptsPerTask || options.maxStepsPerRun || options.operationLeaseTimeoutMs
+          options.maxAttemptsPerTask ||
+          options.maxStepsPerRun ||
+          options.operationLeaseTimeoutMs ||
+          options.maxConcurrentTasks
             ? {
+                maxConcurrentTasks: options.maxConcurrentTasks
+                  ? Number.parseInt(options.maxConcurrentTasks, 10)
+                  : undefined,
                 recovery: {
                   maxAttemptsPerTask: options.maxAttemptsPerTask
                     ? Number.parseInt(options.maxAttemptsPerTask, 10)
@@ -117,12 +132,16 @@ export function registerGoalCommand(program: Command) {
             : undefined,
         maxRounds: options.maxRounds ? Number.parseInt(options.maxRounds, 10) : undefined,
         maxTotalCost: options.maxCost ? Number.parseFloat(options.maxCost) : undefined,
+        problemDescription: options.instruction,
         projectId: options.project,
         requirement: options.requirement,
         title,
         work: options.work,
       });
-      const url = buildUrl(`/goal/${encodeURIComponent(result.data.id)}`);
+      // `goal.create` returns the whole graph snapshot, so the id is on its
+      // goal — `result.data.id` is undefined, and the CLI cannot resolve the
+      // router's types to catch that, which is how it reached a printed URL.
+      const url = buildUrl(`/goal/${encodeURIComponent(result.data.goal.id)}`);
       if (options.json !== undefined) return outputJson({ ...result.data, url }, options.json);
       printGraph(result.data);
       console.log(`${pc.bold('goal')}: ${url}`);
