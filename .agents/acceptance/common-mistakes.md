@@ -326,6 +326,26 @@ list items, table rows, fenced code, and literal transcript output, which are ex
 the places the break is the content. Never run a proseWrap formatter over files under
 `assets/`.
 
+### L-E20 — Seeding an entity below its composing layer, then publishing its page as evidence
+
+**Wrong approach:** build a goal/task fixture by calling the service or TRPC endpoint
+directly with minimal fields, skipping the client-side composer the real creation flows
+run (e.g. `buildGoalRequirement` folding acceptance criteria into the requirement
+prose), then screenshot the entity page as feature evidence.
+
+**Why it fails:** the page renders the under-composed data faithfully — a requirement
+reduced to one bare sentence — and the reviewer reads that as a code regression in an
+untouched block ("这块怎么被改了？canary 才是对的"). A whole feedback round gets spent
+disproving a defect that only exists in the fixture. The diff shows nothing because
+nothing changed.
+
+**Correct approach:** drive fixtures through the same composition the product uses —
+either the real creation surface, or the same shaping helpers the callers invoke — and
+before publishing an entity page as evidence, compare its populated fields against a
+canary-created sibling. When a service accepts decomposed inputs, prefer adding a
+server-side guard that re-derives the composed field, so no API caller (fixtures
+included) can create the under-composed shape at all.
+
 ## Product and interaction contracts
 
 ### L-D1 — Rebuilding a canonical surface from visual impression
@@ -742,6 +762,24 @@ a dev server started by another session can point somewhere else entirely. Re-se
 round-trip), and re-run `setup-auth.sh web-seed` because the SPA's client-side auth
 gate still redirects to `/signin` after the row is recreated.
 
+### L-S20 — Bootstrapping the isolated stack with the script's default DB port hits another project's Postgres
+
+**Wrong approach:** run `init-dev-env.sh setup-db` / `seed-user` / `dev` from a fresh
+worktree and trust "database migration pass" plus a started server.
+
+**Why it fails:** the script defaults to `DB_PORT=5433` / `REDIS_PORT=6380`, but on a
+machine where those ports were already taken the managed containers were created on
+5434 / 6381 (`docker ps` shows `lobehub-agent-testing-postgres` → `0.0.0.0:5434`). The
+default then dials whatever owns 5433 — another project's Postgres — and fails with
+`password authentication failed` (`routine: 'auth_failed'`), or worse, succeeds against
+a database that is not ours. The dev server started in that state serves a healthy page
+whose every tRPC write fails far from the cause.
+
+**Correct approach:** read the managed containers' host ports from `docker ps` first and
+pass them explicitly to every subcommand and to the backgrounded `dev`
+(`DB_PORT=5434 REDIS_PORT=6381 init-dev-env.sh …`). Treat a `migrate` that fails with
+`auth_failed` as a port mismatch, never as a credentials problem.
+
 ### L-S8 — Reading a first-boot renderer crash as a defect of the change under test
 
 **Wrong approach:** treat the Electron dev instance's first renderer boot as
@@ -955,6 +993,16 @@ Fetching the module through the Next origin does not reveal it either — unknow
 paths fall through to the SPA HTML shell, so a `grep` for your symbol "fails" against
 `<!DOCTYPE html>` and reads as a stale bundle.
 
+**Same failure, quality-gate shape.** The silent cwd reset also sends `bun run check`
+and `bunx vitest run` to the MAIN checkout, where the same relative test paths exist in
+their pre-change form — the run prints `lint clean · tests N passed` against files your
+edits never touched, and a regression test you just added "passes" without ever
+executing. The tell is the count: fewer tests reported than the file now declares —
+though the number alone cannot be trusted either way, since `it.each` expands one
+declaration into many executed cases. Before trusting any gate result in a worktree
+session, `pwd` (or prefix the command with an explicit `cd <worktree> &&`) and
+confirm the NAME of the test you just added appears in the runner's output.
+
 **Correct approach:** invoke the script by absolute path from the worktree, and before
 capturing any evidence prove the SPA's identity rather than the server's liveness:
 resolve the Vite pid from its port and read its cwd
@@ -999,14 +1047,14 @@ not.
 
 **What happened.** A round's `plan[]` was filled with the agent's task list —
 "find the root cause", "fix it and add a regression test", "record the flows" —
-instead of acceptance criteria. `plan[]` is the *frozen check plan*: every item
+instead of acceptance criteria. `plan[]` is the _frozen check plan_: every item
 is a check that must be executed by a case with the same `id`, and a planned
 item with no case renders as **未执行** rather than vanishing. The three items
 had no `id`, so the server numbered them `case-1..3` and three permanent
 `not executed` gate checks appeared on the user's acceptance board — gates that
 can never pass, on work that was in fact complete.
 
-**Rule.** `plan[]` holds only what the *user* would accept or reject, each with
+**Rule.** `plan[]` holds only what the _user_ would accept or reject, each with
 a stable `id` that a case in the same round fulfills. Your own steps —
 investigate, fix, test, record — are not checks. If a round has one criterion,
 `plan[]` has exactly one item.

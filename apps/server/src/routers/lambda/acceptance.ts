@@ -8,7 +8,7 @@ import {
 } from '@lobechat/const/verify';
 import type { AcceptanceAttachment } from '@lobechat/types';
 import { TRPCError } from '@trpc/server';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -40,7 +40,7 @@ import {
 } from '@/server/services/verify';
 import { after } from '@/server/utils/scheduleAfterResponse';
 
-import { canManageAcceptance } from './_helpers/acceptanceWriteScope';
+import { canManageAcceptance, filterManageableAcceptances } from './_helpers/acceptanceWriteScope';
 import { assertWorkspaceRowManageable } from './_helpers/assertWorkspaceRowManageable';
 
 const subjectTypeSchema = z.enum(acceptanceSubjectTypes);
@@ -592,6 +592,7 @@ export const acceptanceRouter = router({
         .object({
           filter: z.enum(['active', 'all', 'completed']).optional(),
           limit: z.number().int().min(1).max(200).optional(),
+          projectId: z.string().optional(),
           q: z.string().max(200).optional(),
         })
         .optional(),
@@ -613,6 +614,7 @@ export const acceptanceRouter = router({
           cursor: z.string().optional(),
           filter: z.enum(['active', 'all', 'completed']).optional(),
           limit: z.number().int().min(1).max(100).optional(),
+          projectId: z.string().optional(),
         })
         .optional(),
     )
@@ -621,6 +623,7 @@ export const acceptanceRouter = router({
         cursor: input?.cursor,
         filter: input?.filter,
         limit: input?.limit,
+        projectId: input?.projectId,
       }),
     ),
 
@@ -1018,6 +1021,65 @@ export const acceptanceRouter = router({
         projectId: input.projectId,
       });
       return { success: true };
+    }),
+
+  /**
+   * The multi-select twin of `setProject`: file a whole selection under one
+   * project (or take it out of any) in one action.
+   *
+   * The target project is validated ONCE, up front — a missing project fails
+   * the sweep wholesale, because every row was headed to the same place. Rows
+   * keep the batch contract — one the caller cannot write lands in `failedIds`
+   * instead of voiding the rest — but unlike the status sweep there is no
+   * per-row recomputation, so the whole move is three bounded queries (resolve,
+   * authorize, bulk update) rather than a round trip per row.
+   */
+  setProjectBatch: acceptanceWriteProcedure
+    .input(
+      z.object({
+        ids: z.array(z.string()).min(1).max(ACCEPTANCE_BATCH_LIMIT),
+        projectId: z.string().nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.projectId) {
+        const project = await new ProjectModel(
+          ctx.serverDB,
+          ctx.userId,
+          ctx.workspaceId ?? undefined,
+        ).findById(input.projectId);
+        if (!project) throw new TRPCError({ code: 'NOT_FOUND', message: 'Project not found' });
+      }
+
+      const ids = [...new Set(input.ids)];
+      const resolvableIds = ids.filter((id) => isUuid(id));
+      const rows =
+        resolvableIds.length > 0
+          ? await ctx.serverDB.query.acceptances.findMany({
+              columns: { id: true, userId: true, workspaceId: true },
+              where: inArray(acceptances.id, resolvableIds),
+            })
+          : [];
+      const manageable = await filterManageableAcceptances(ctx, rows);
+
+      let updatedIds: string[] = [];
+      if (manageable.length > 0) {
+        updatedIds = (
+          await ctx.serverDB
+            .update(acceptances)
+            .set({ projectId: input.projectId })
+            .where(
+              inArray(
+                acceptances.id,
+                manageable.map((row) => row.id),
+              ),
+            )
+            .returning({ id: acceptances.id })
+        ).map((row) => row.id);
+      }
+
+      const updatedSet = new Set(updatedIds);
+      return { failedIds: ids.filter((id) => !updatedSet.has(id)), updated: updatedIds.length };
     }),
 
   /**

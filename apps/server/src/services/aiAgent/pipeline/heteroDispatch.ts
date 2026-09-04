@@ -247,6 +247,12 @@ export const dispatchHeteroAgent = async (
   // so hetero ops aren't visually distinct bare nanoids in the trace/op tables.
   const operationId = `op_${Date.now()}_${resolvedAgentId}_${topicId}_${nanoid(8)}`;
 
+  // Hooks belong to this operation's lifecycle. Persist their serializable
+  // form on the durable operation row before dispatch; runningOperation below
+  // remains a compatibility mirror for older terminal consumers.
+  if (hooks?.length) hookDispatcher.register(operationId, hooks);
+  const serializedHooks = hookDispatcher.getSerializedHooks(operationId);
+
   // Persist a first-class agent_operations row for the hetero run. The id is
   // generated here (authoritative) and flows through to heteroIngest /
   // heteroFinish unchanged. Without this row the run is invisible to the
@@ -263,6 +269,10 @@ export const dispatchHeteroAgent = async (
     agentId: persistAgentId,
     chatGroupId: appContext?.groupId ?? null,
     maxSteps,
+    metadata: {
+      _hooks: serializedHooks,
+      assistantMessageId,
+    },
     operationId,
     parentOperationId,
     provider: heteroType,
@@ -272,6 +282,7 @@ export const dispatchHeteroAgent = async (
     trigger,
   });
   if (!operationPersisted) {
+    hookDispatcher.unregister(operationId);
     throw new Error('Failed to persist heterogeneous agent operation');
   }
 
@@ -331,7 +342,14 @@ export const dispatchHeteroAgent = async (
   let conversationHistory: ConversationHistoryEntry[] | undefined;
   if (heteroType !== 'amp') {
     try {
-      const recentMsgs = await deps.messageModel.query({ topicId, pageSize: 200 });
+      // `allowShareVisitor`: this is the RUN's own topic, already resolved
+      // and authorized upstream. An agent-share visitor run executes under
+      // the creator's identity, so without the opt-in `query()`'s
+      // creator-facing default would hand the agent an empty history.
+      const recentMsgs = await deps.messageModel.query(
+        { topicId, pageSize: 200 },
+        { allowShareVisitor: true },
+      );
       const turns = recentMsgs
         .filter(
           (m) =>
@@ -442,11 +460,8 @@ export const dispatchHeteroAgent = async (
   // runtime uses — driving the task lifecycle (onTopicComplete) and IM bot
   // completion callbacks uniformly. The hetero block returns before
   // AgentRuntimeService (which registers hooks for normal runs), so we do it
-  // here. Local mode dispatches these in-memory handlers; queue mode
-  // delivers the serialized webhooks persisted on runningOperation below.
-  if (hooks?.length) hookDispatcher.register(operationId, hooks);
-  const serializedHooks = hookDispatcher.getSerializedHooks(operationId);
-
+  // here. Local mode dispatches these in-memory handlers; queue mode delivers
+  // the serialized webhooks persisted on the operation row above.
   // Seed topic.metadata.runningOperation so heteroIngest can validate the
   // operation, and so every terminal site (heteroFinish, agentNotify done,
   // dispatch failure) can re-fire the serialized hooks across a process

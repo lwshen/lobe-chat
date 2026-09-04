@@ -24,6 +24,9 @@ import type {
 } from '@/database/schemas/verify';
 import { lambdaClient } from '@/libs/trpc/client';
 
+/** Criterion row plus the judge instruction resolved from its linked document. */
+export type GoalCriterionWithInstruction = VerifyCriterionItem & { instruction?: string };
+
 export type AcceptanceBundle = Awaited<ReturnType<typeof lambdaClient.acceptance.getBundle.query>>;
 export type AcceptanceBySubject = Awaited<
   ReturnType<typeof lambdaClient.acceptance.getBySubject.query>
@@ -179,11 +182,19 @@ export class VerifyService {
     filter?: 'active' | 'all' | 'completed';
     /** Widen the recency window (server-capped) — the merge picker asks for more. */
     limit?: number;
+    projectId?: string;
     q?: string;
     quiet?: boolean;
   }): Promise<AcceptanceListItem[]> =>
     lambdaClient.acceptance.list.query(
-      options ? { filter: options.filter, limit: options.limit, q: options.q } : undefined,
+      options
+        ? {
+            filter: options.filter,
+            limit: options.limit,
+            projectId: options.projectId,
+            q: options.q,
+          }
+        : undefined,
       options?.quiet ? { context: { showNotification: false } } : undefined,
     );
 
@@ -192,6 +203,7 @@ export class VerifyService {
     cursor?: string;
     filter?: AcceptanceListFilter;
     limit?: number;
+    projectId?: string;
   }): Promise<AcceptanceListPage> => lambdaClient.acceptance.listPage.query(params);
 
   /**
@@ -289,6 +301,14 @@ export class VerifyService {
    */
   setAcceptanceProject = (id: string, projectId: string | null) =>
     lambdaClient.acceptance.setProject.mutate({ id, projectId });
+
+  /**
+   * Batch twin of `setAcceptanceProject` for the list's multi-selection. Rows
+   * the caller cannot write come back in `failedIds` instead of failing the
+   * whole sweep.
+   */
+  setAcceptanceProjectBatch = (ids: string[], projectId: string | null) =>
+    lambdaClient.acceptance.setProjectBatch.mutate({ ids, projectId });
 
   /** Owner override of the acceptance's decision state from the list. */
   updateAcceptanceStatus = (id: string, status: AcceptanceStatusOverride) =>
@@ -426,6 +446,10 @@ export class VerifyService {
     lambdaClient.verify.createCriteria.mutate({ drafts }) as Promise<string[]>;
 
   // ---- criteria / rubric management ----
+  /** Resolve a specific criteria id list (e.g. a goal's acceptance standard), in order. */
+  getCriteria = (ids: string[]): Promise<GoalCriterionWithInstruction[]> =>
+    lambdaClient.verify.getCriteria.query({ ids }) as Promise<GoalCriterionWithInstruction[]>;
+
   listCriteria = (): Promise<VerifyCriterionItem[]> =>
     lambdaClient.verify.listCriteria.query() as Promise<VerifyCriterionItem[]>;
 
