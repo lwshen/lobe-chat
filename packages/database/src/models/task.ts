@@ -30,8 +30,20 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { merge } from '@/utils/merge';
 
 import { documents } from '../schemas/file';
-import type { NewTaskComment, TaskCommentItem } from '../schemas/task';
-import { taskComments, taskDependencies, taskDocuments, tasks, taskTopics } from '../schemas/task';
+import type {
+  NewTaskActivity,
+  NewTaskComment,
+  TaskActivityItem,
+  TaskCommentItem,
+} from '../schemas/task';
+import {
+  taskActivities,
+  taskComments,
+  taskDependencies,
+  taskDocuments,
+  tasks,
+  taskTopics,
+} from '../schemas/task';
 import { topics } from '../schemas/topic';
 import { acceptances } from '../schemas/verify';
 import { works } from '../schemas/work';
@@ -485,6 +497,11 @@ export class TaskModel {
           .update(taskComments)
           .set({ visibility })
           .where(and(inArray(taskComments.taskId, taskIds), this.commentsOwnership()));
+
+        await tx
+          .update(taskActivities)
+          .set({ visibility })
+          .where(and(inArray(taskActivities.taskId, taskIds), this.activitiesOwnership()));
       }
 
       return updated ?? null;
@@ -1213,6 +1230,25 @@ export class TaskModel {
     return result.length;
   }
 
+  /**
+   * Update a frozen set of task ids in one SQL statement so the family cannot
+   * be left partially transitioned. Callers pass the exact ids they snapshotted
+   * (and the user confirmed); a task that changes status concurrently is never
+   * pulled into the update by a status re-query.
+   */
+  async updateStatusForIds(
+    ids: string[],
+    status: string,
+    extra?: { completedAt?: Date; error?: string | null; startedAt?: Date },
+  ): Promise<TaskItem[]> {
+    if (ids.length === 0) return [];
+    return this.db
+      .update(tasks)
+      .set({ status, updatedAt: new Date(), ...extra })
+      .where(and(inArray(tasks.id, ids), this.ownership()))
+      .returning();
+  }
+
   // ========== Config ==========
 
   /**
@@ -1493,25 +1529,53 @@ export class TaskModel {
 
   // Find tasks that are now unblocked after a dependency completes
   async getUnlockedTasks(completedTaskId: string): Promise<TaskItem[]> {
-    // Find all tasks that depend on the completed task
-    const dependents = await this.getDependents(completedTaskId);
-    const unlocked: TaskItem[] = [];
+    return this.getUnlockedTasksForMany([completedTaskId]);
+  }
 
-    for (const dep of dependents) {
-      if (dep.type !== 'blocks') continue;
+  /**
+   * Batched variant of {@link getUnlockedTasks}: discover every task unblocked
+   * by any of `completedTaskIds` with a constant number of queries instead of
+   * one dependency walk per completed task.
+   */
+  async getUnlockedTasksForMany(completedTaskIds: string[]): Promise<TaskItem[]> {
+    if (completedTaskIds.length === 0) return [];
 
-      // Check if ALL dependencies of this task are now completed
-      const allDone = await this.areAllDependenciesCompleted(dep.taskId);
-      if (!allDone) continue;
+    // All tasks that depend on any of the completed tasks
+    const dependents = await this.db
+      .select({ taskId: taskDependencies.taskId })
+      .from(taskDependencies)
+      .where(
+        and(
+          inArray(taskDependencies.dependsOnId, completedTaskIds),
+          eq(taskDependencies.type, 'blocks'),
+          this.depsOwnership(),
+        ),
+      );
+    const dependentIds = [...new Set(dependents.map(({ taskId }) => taskId))];
+    if (dependentIds.length === 0) return [];
 
-      // Get the task itself — only unlock if it's in backlog
-      const task = await this.findById(dep.taskId);
-      if (task && task.status === 'backlog') {
-        unlocked.push(task);
-      }
-    }
+    // Of those, which still have at least one incomplete blocking dependency
+    const blocked = await this.db
+      .selectDistinct({ taskId: taskDependencies.taskId })
+      .from(taskDependencies)
+      .innerJoin(tasks, eq(taskDependencies.dependsOnId, tasks.id))
+      .where(
+        and(
+          inArray(taskDependencies.taskId, dependentIds),
+          eq(taskDependencies.type, 'blocks'),
+          ne(tasks.status, 'completed'),
+          this.depsOwnership(),
+        ),
+      );
+    const blockedIds = new Set(blocked.map(({ taskId }) => taskId));
+    const unlockedIds = dependentIds.filter((id) => !blockedIds.has(id));
+    if (unlockedIds.length === 0) return [];
 
-    return unlocked;
+    // Only unlock tasks still waiting in backlog
+    return this.db
+      .select()
+      .from(tasks)
+      .where(and(inArray(tasks.id, unlockedIds), eq(tasks.status, 'backlog'), this.ownership()));
   }
 
   // Check if all subtasks of a parent task are completed
@@ -1781,6 +1845,44 @@ export class TaskModel {
     return comment;
   }
 
+  // ========== Activities ==========
+
+  private activitiesOwnership = () =>
+    this.childOwnership({
+      userId: taskActivities.userId,
+      visibility: taskActivities.visibility,
+      workspaceId: taskActivities.workspaceId,
+    });
+
+  /**
+   * Append one event row. Mirrors the parent task's visibility onto the row so
+   * subsequent reads can be filtered without a JOIN — same contract as
+   * `addComment`.
+   */
+  async addActivity(
+    data: Omit<NewTaskActivity, 'id' | 'userId' | 'workspaceId' | 'visibility'>,
+  ): Promise<TaskActivityItem> {
+    const visibility = await this.getTaskVisibility(data.taskId);
+    const [activity] = await this.db
+      .insert(taskActivities)
+      .values({
+        ...data,
+        userId: this.userId,
+        visibility,
+        workspaceId: this.workspaceId ?? null,
+      })
+      .returning();
+    return activity;
+  }
+
+  async getActivities(taskId: string): Promise<TaskActivityItem[]> {
+    return this.db
+      .select()
+      .from(taskActivities)
+      .where(and(eq(taskActivities.taskId, taskId), this.activitiesOwnership()))
+      .orderBy(taskActivities.createdAt);
+  }
+
   // ========== Transfer / Copy ==========
 
   /**
@@ -1832,9 +1934,14 @@ export class TaskModel {
 
   /**
    * Transfer a task subtree to another workspace / personal scope. Reallocates
-   * `identifier`/`seq` in the target scope and rewrites every dependent child
-   * table (`task_dependencies`, `task_documents`, `task_topics`,
-   * `task_comments`, `briefs`) so the ownership predicates remain consistent.
+   * `identifier`/`seq` in the target scope and rewrites the child tables that
+   * mirror the parent's ownership (`task_dependencies`, `task_documents`,
+   * `task_comments`, `task_activities`) so the ownership predicates keep
+   * resolving after the move — those mirrored columns are what authorizes
+   * reads, so a child left behind goes invisible in the destination scope.
+   *
+   * NOTE: `task_topics` and `briefs` carry the same mirrored columns but are
+   * not rewritten here. Pre-existing gap, called out rather than widened.
    *
    * Cross-scope references that may no longer be valid are cleared:
    *   - `assigneeAgentId` (workspace move: agent likely doesn't exist there)
@@ -1911,6 +2018,10 @@ export class TaskModel {
         .update(taskComments)
         .set({ ...ownershipUpdate, ...visibilityUpdate })
         .where(inArray(taskComments.taskId, ids));
+      await (trx as LobeChatDatabase)
+        .update(taskActivities)
+        .set({ ...ownershipUpdate, ...visibilityUpdate })
+        .where(inArray(taskActivities.taskId, ids));
 
       return { taskIds: ids };
     });

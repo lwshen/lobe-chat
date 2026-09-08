@@ -1,4 +1,24 @@
 export default {
+  'acceptance.review.submitFailed': 'Could not submit. Your draft is saved; please try again.',
+  'acceptance.bar.mobileProgress': 'Delivery: {{done}} / {{total}} reviewed',
+  'acceptance.review.historicalReadOnly':
+    'This is a past round. Return to all rounds to review the current delivery.',
+  'acceptance.review.backToImages': 'Back to images',
+  'acceptance.review.writeFeedback': 'Write feedback',
+  'acceptance.review.mobileDrawHint': 'Drag to mark an issue',
+  'acceptance.review.mobileBrowseHint': 'Swipe to switch · scroll to read',
+  'acceptance.review.draftSaved': 'Your draft is saved on this device.',
+  'acceptance.review.removeAttachment': 'Remove attachment',
+  'acceptance.review.regionImage': 'Image {{image}} · Region {{region}}',
+
+  'acceptance.focus.previous': 'Previous check',
+  'acceptance.focus.next': 'Next check',
+  'acceptance.review.previousImage': 'Previous image',
+  'acceptance.review.nextImage': 'Next image',
+  'acceptance.review.imageNumber': 'Image {{current}} / {{total}}',
+  'acceptance.review.drawRegion': 'Draw region',
+  'acceptance.review.browseImage': 'Browse',
+
   'acceptance.accept.exceptionsHint':
     'Accepting means you have seen these exceptions and take the delivery with them.',
   'acceptance.accept.exceptionsTitle': '{{count}} exception(s) still unresolved:',
@@ -30,7 +50,7 @@ export default {
   'acceptance.bar.addCommentDescription':
     'A delivery-wide note for what the queued feedback misses — the next verification round reads it.',
   'acceptance.bar.copied': 'Copied — paste it to any agent to start the repair.',
-  'acceptance.bar.copyReview': 'Copy review prompt',
+  'acceptance.bar.copyReview': 'Copy repair prompt',
   'acceptance.bar.feedback': 'Feedback {{count}}',
   'acceptance.bar.needsFix': 'All reviewed — {{count}} to fix',
   'acceptance.bar.progress':
@@ -255,6 +275,11 @@ export default {
   'acceptance.status.rejected': 'Delivery rejected',
   'acceptance.status.repairing': 'Repair in progress',
   'acceptance.status.verifying': 'Verification in progress',
+  'acceptance.shell.back': 'Back',
+  'acceptance.shell.menu': 'Show deliveries',
+  'acceptance.resources.empty': 'No files yet — rounds attach their evidence here.',
+  'acceptance.tabs.checks': 'Checklist',
+  'acceptance.tabs.resources': 'Files',
   'acceptance.subject.document': 'Document',
   'acceptance.subject.standalone': 'Standalone',
   'acceptance.subject.task': 'Task',
@@ -325,7 +350,7 @@ export default {
   'acceptance.workspace.deleteError': 'Failed to delete acceptance',
   'acceptance.workspace.deleteSuccess': 'Acceptance deleted',
   'acceptance.workspace.emptyDetail.description':
-    'Pick an acceptance on the left to review its checks, rounds and evidence.',
+    'Open the deliveries menu to pick a record and inspect its checks, rounds and evidence.',
   'acceptance.workspace.emptyDetail.title': 'Select an acceptance',
   'acceptance.workspace.filters.active': 'In progress',
   'acceptance.workspace.filters.all': 'All acceptances',
