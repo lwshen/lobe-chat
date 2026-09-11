@@ -158,9 +158,17 @@ export interface AcceptanceGroupFeedback {
 /** One group-scoped feedback entry as stored on a round's decision detail. */
 export type VerifyRunGroupFeedbackEntry = Omit<AcceptanceGroupFeedback, 'roundIndex'>;
 
+/** A presentation group of stable acceptance-union check IDs, independent of execution flows. */
+export interface AcceptanceCheckGroup {
+  checkItemIds: string[];
+  title: string;
+}
+
 /** Generic acceptance extension bag for cross-subject state we have not modeled yet. */
 export interface AcceptanceMetadata {
   [key: string]: unknown;
+  /** Current checklist organization; frozen plans, results and reviews keep their original IDs. */
+  checkGrouping?: { groups: AcceptanceCheckGroup[]; version: number };
   /** User-set display-title override for the acceptance (sidebar rename). */
   title?: string;
 }
@@ -581,6 +589,12 @@ export interface VerifyRunMetadata {
    * run that *authored* the report — and is many-to-one.
    */
   origin?: VerifyRunOrigin;
+  /**
+   * The round this one replays (`flow plan --from-run`). A replay is pinned to
+   * the source round's frozen definition, so it never follows later graph edits
+   * and never absorbs another flow, even while it holds no results yet.
+   */
+  replayOfRunId?: string;
 }
 
 export type VerifyVisualizationValue = boolean | null | number | string;
