@@ -608,6 +608,24 @@ export const deviceRouter = router({
     }),
 
   /**
+   * Children of one directory inside a project on a remote device. The Files
+   * tree calls this when the user expands a directory the index collapsed
+   * (a fully git-ignored folder). Returns `null` when offline.
+   */
+  listProjectDirectory: deviceProcedure
+    .input(z.object({ deviceId: z.string(), relativePath: z.string(), root: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const result = await deviceGateway.listProjectDirectory({
+        deviceId: input.deviceId,
+        relativePath: input.relativePath,
+        root: input.root,
+        userId: ctx.userId,
+        workspaceId: ctx.workspaceId,
+      });
+      return result ?? null;
+    }),
+
+  /**
    * Browse one directory level on a remote device. Personal devices belong to
    * the caller. A workspace device may expose new paths only to its enroller or
    * a workspace owner; other members continue to use its approved recents.
@@ -697,6 +715,19 @@ export const deviceRouter = router({
         workingDirectory: input.workingDirectory,
       });
     }),
+
+  copyAssetForPublish: workspaceFileProcedure
+    .input(z.object({ from: z.string(), to: z.string() }))
+    .mutation(async ({ ctx, input }) =>
+      deviceGateway.copyAssetForPublish({
+        deviceId: input.deviceId,
+        from: input.from,
+        to: input.to,
+        userId: ctx.userId,
+        workspaceId: ctx.workspaceId,
+        workingDirectory: input.workingDirectory,
+      }),
+    ),
 
   readExternalAssetForPublish: workspaceFileProcedure
     .input(z.object({ path: z.string() }))
