@@ -87,6 +87,7 @@ import {
   isSuccessLikeCompletionReason,
   normalizeCompletionMessages,
 } from './CompletionLifecycle';
+import { stepChangedCredentials } from './credentialFacts';
 import { logToolCallPc } from './formalObservation';
 import { type AgentHook, hookDispatcher } from './hooks';
 import { HumanInterventionHandler } from './HumanInterventionHandler';
@@ -930,6 +931,7 @@ export class AgentRuntimeService {
       agentGroup,
       agentShareVisitor,
       modelRuntimeConfig,
+      operationCredentials,
       userId,
       autoStart = true,
       stream,
@@ -1113,6 +1115,9 @@ export class AgentRuntimeService {
         maxSteps,
         // modelRuntimeConfig at state level for executor fallback
         modelRuntimeConfig,
+        // Read once during discovery; dropped again as soon as the run changes
+        // its own credentials (see the creds invalidation after a step).
+        operationCredentials,
         operationId,
         // The run's only copy of its tool set. The manifest map is the heaviest
         // thing on the state and the state is re-serialized at every step, so the
@@ -2005,6 +2010,10 @@ export class AgentRuntimeService {
           currentState.pendingToolsCalling = [];
           currentState.status = 'running';
           currentState.interruption = undefined;
+          // Whatever ran while this operation was parked is invisible from
+          // here: a sub-agent that saved a credential cleared its own snapshot,
+          // not this one. Drop ours rather than render a list that predates it.
+          currentState.operationCredentials = undefined;
           currentState.lastModified = new Date().toISOString();
           currentContext = {
             payload: { parentMessageId: resumeParentMessageId },
@@ -2220,6 +2229,18 @@ export class AgentRuntimeService {
               type: 'message_patch',
             });
           }
+        }
+
+        // A credential the run just saved or connected changes the list the next
+        // step must show, so the snapshot frozen at creation no longer holds.
+        // Dropped before the save below — that write is what the next step
+        // reloads, and nothing else persists the state on a plain step.
+        if (
+          stepChangedCredentials(stepResult.nextContext) &&
+          stepResult.newState.operationCredentials
+        ) {
+          stepResult.newState.operationCredentials = undefined;
+          log('[%s][%d] Credentials changed in-run; dropped the snapshot', operationId, stepIndex);
         }
 
         // Save state, coordinator will handle event sending automatically

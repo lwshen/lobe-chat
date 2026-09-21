@@ -2,6 +2,7 @@ import { listDocumentsProjector, readDocumentProjector } from './projectors/agen
 import { grepContentProjector } from './projectors/grepContent';
 import { runCommandProjector } from './projectors/localSystem';
 import { readFileProjector } from './projectors/readFile';
+import { searchKnowledgeBaseProjector, webSearchProjector } from './projectors/searchResults';
 import { searchUserMemoryProjector } from './projectors/userMemory';
 import { crawlProjector } from './projectors/webBrowsing';
 import type { ToolProjector } from './types';
@@ -17,6 +18,12 @@ import type { ToolProjector } from './types';
  * `BODY_ONLY_PROJECTION` — and keeps its `pluginState` whole. An entry here is
  * how a tool additionally sheds state, which needs per-tool knowledge of the
  * keys its collapsed row reads.
+ *
+ * Before adding one, check that the tool's row does NOT open by itself:
+ * `needExpand` is `renderDisplayControl !== 'collapsed'`, so a tool whose
+ * manifest declares `expand` / `alwaysExpand` mounts its card on every
+ * conversation load — and a projection that hydrates on expansion would then
+ * cost a round trip per row instead of saving anything.
  */
 const toolProjectors: Record<string, Record<string, ToolProjector>> = {
   // Every tool below renders through the SAME shared card,
@@ -38,6 +45,9 @@ const toolProjectors: Record<string, Record<string, ToolProjector>> = {
   'lobe-cloud-sandbox': {
     grepContent: grepContentProjector,
   },
+  'lobe-knowledge-base': {
+    searchKnowledgeBase: searchKnowledgeBaseProjector,
+  },
   'lobe-local-system': {
     grepContent: grepContentProjector,
     readFile: readFileProjector,
@@ -49,6 +59,7 @@ const toolProjectors: Record<string, Record<string, ToolProjector>> = {
   'lobe-web-browsing': {
     crawlMultiPages: crawlProjector,
     crawlSinglePage: crawlProjector,
+    search: webSearchProjector,
   },
   'opencode': {
     bash: runCommandProjector,
@@ -83,10 +94,13 @@ const eventBodyUnused: ReadonlySet<string> = new Set([
   'lobe-cloud-sandbox/grepContent',
   'lobe-local-system/grepContent',
   'lobe-local-system/readFile',
-  // `lobe-user-memory` and `lobe-web-browsing` register no hook at all.
+  // `lobe-knowledge-base`, `lobe-user-memory` and `lobe-web-browsing` register
+  // no hook at all.
+  'lobe-knowledge-base/searchKnowledgeBase',
   'lobe-user-memory/searchUserMemory',
   'lobe-web-browsing/crawlMultiPages',
   'lobe-web-browsing/crawlSinglePage',
+  'lobe-web-browsing/search',
 ]);
 
 /** Whether a `tool_end` for this tool can travel without its result body. */

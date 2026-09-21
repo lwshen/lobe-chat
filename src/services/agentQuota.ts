@@ -4,6 +4,8 @@ import type {
 } from '@lobechat/electron-client-ipc';
 import type {
   CodexQuotaSnapshot,
+  KimiCodeExtraUsage,
+  KimiCodeQuotaSnapshot,
   QuotaAccountIdentity,
   QuotaLimitReading,
 } from '@lobechat/heterogeneous-agents/quota';
@@ -28,6 +30,19 @@ class AgentQuotaService {
     force?: boolean;
   }): Promise<CodexQuotaSnapshot | null> =>
     lambdaClient.agentQuota.refreshCodexQuota.mutate(params);
+
+  ingestKimiCodeSnapshot = async (params: {
+    extraUsage?: KimiCodeExtraUsage | null;
+    identity: QuotaAccountIdentity;
+    readings: QuotaLimitReading[];
+  }) => lambdaClient.agentQuota.ingestSnapshot.mutate({ ...params, provider: 'kimi-code' });
+
+  refreshKimiCodeQuota = async (params: {
+    deviceId: string;
+    env?: Record<string, string>;
+    force?: boolean;
+  }): Promise<KimiCodeQuotaSnapshot | null> =>
+    lambdaClient.agentQuota.refreshKimiCodeQuota.mutate(params);
 
   /** Persist a live Claude snapshot (identity + readings) captured over IPC. */
   ingestClaudeSnapshot = async (params: {
@@ -96,7 +111,7 @@ class AgentQuotaService {
     model?: string;
     occurredAt?: number;
     operationId?: string;
-    provider: 'claude-code' | 'codex';
+    provider: 'claude-code' | 'codex' | 'kimi-code';
     topicId?: string;
     usage: {
       cacheRead?: number;

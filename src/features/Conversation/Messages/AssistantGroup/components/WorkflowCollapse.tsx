@@ -46,7 +46,7 @@ export type WorkflowExpandLevel = 'collapsed' | 'semi' | 'full';
 
 /** Per-phase initial level. Pass an object when streaming and completion
  *  should differ — e.g. heterogeneous agents want full while streaming but
- *  still collapse once a turn finishes. A plain string applies to both. */
+ *  keep the built-in completion default. A plain string applies to both. */
 export type WorkflowExpandLevelDefault =
   WorkflowExpandLevel | { completion?: WorkflowExpandLevel; streaming?: WorkflowExpandLevel };
 
@@ -55,17 +55,17 @@ interface WorkflowCollapseProps {
   assistantMessageId: string;
   blocks: RenderableAssistantContentBlock[];
   /**
-   * Fixed default expand level. When set, overrides the built-in auto
-   * behavior (expand while streaming, collapse after completion) for the
-   * initial state and resets. Users can still toggle locally.
-   * Pass an object to override only one phase (e.g. `{ streaming: 'full' }`).
-   * Undefined = legacy auto behavior. Pending intervention still forces open.
+   * Fixed default expand level. When set, overrides the built-in defaults
+   * (streaming `semi`, completion `full`) for the initial state and resets.
+   * Users can still toggle locally. Pass an object to override only one
+   * phase (e.g. `{ streaming: 'collapsed' }`). Undefined = built-in defaults.
+   * Pending intervention still forces open.
    */
   defaultWorkflowExpandLevel?: WorkflowExpandLevelDefault;
   disableEditing?: boolean;
   /**
-   * Skip the completion auto-collapse (semi → collapsed, an animated Accordion
-   * height transition) because the parent is about to fold the whole workflow
+   * Skip applying the completion level (an animated Accordion height
+   * transition) because the parent is about to fold the whole workflow
    * into `ProcessFold` in a single commit. Collapsing twice — once as a
    * multi-frame animation, once as the fold swap — is what makes the
    * conversation visibly jitter when a turn with tool calls finishes.
@@ -205,13 +205,23 @@ const WorkflowCollapse = memo<WorkflowCollapseProps>(
       [defaultWorkflowExpandLevel],
     );
     const streamingInitialLevel: WorkflowExpandLevel = streamingDefault ?? 'semi';
-    const completionInitialLevel: WorkflowExpandLevel = completionDefault ?? 'collapsed';
-    /** When a consumer opts any phase into `full`, treat the workflow as a
-     *  "fully expanded" experience — manual expands from collapsed go to
-     *  `full` instead of the legacy `semi` cap. Heterogeneous agents rely on
-     *  this so all 40+ tool calls stay visible after the user re-expands. */
+    // Completion defaults to the full list, not a summary-only row: the whole
+    // point of opening a finished turn (or its ProcessFold) is seeing what ran,
+    // and semi's height cap forces a third hop (⤢) for long tool lists. The
+    // base-ui panel unmounts children when folded, so history messages kept at
+    // full pay no render cost while the fold is closed. Consumers pin the old
+    // summary row with defaultWorkflowExpandLevel='collapsed'.
+    const completionInitialLevel: WorkflowExpandLevel = completionDefault ?? 'full';
+    /** Where a manual re-expand from collapsed lands. Derived from the
+     *  *effective* completion level rather than the raw prop: the production
+     *  caller always passes `{ streaming: <setting> }` and no completion phase,
+     *  so keying off `completionDefault` alone reopened at the legacy `semi`
+     *  cap while the same workflow had just rendered at `full`. Consumers that
+     *  pin completion below full keep that compact level; a `full` streaming
+     *  phase keeps the fully expanded experience heterogeneous agents need
+     *  (all 40+ tool calls visible after a re-expand). */
     const manualExpandLevel: WorkflowExpandLevel =
-      streamingDefault === 'full' || completionDefault === 'full' ? 'full' : 'semi';
+      streamingDefault === 'full' || completionInitialLevel === 'full' ? 'full' : 'semi';
 
     const [expandLevel, setExpandLevel] = useState<WorkflowExpandLevel>(() =>
       allComplete ? completionInitialLevel : streamingInitialLevel,
