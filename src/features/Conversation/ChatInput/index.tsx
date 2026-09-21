@@ -124,6 +124,15 @@ export interface ChatInputProps {
    */
   mentionItems?: SlashOptions['items'];
   /**
+   * Blocking notices (device offline, cloud not configured, …). They ride at the
+   * top of the composer's floating stack — above the run-status / queue / todo
+   * trays, which stay next to the input they annotate, and on the same inline
+   * edges as those trays so the stack reads as one column. Rendered as a sibling
+   * above `ChatInput` instead, a notice would be covered by those trays, since
+   * the stack floats upward from the top of this column.
+   */
+  notices?: ReactNode;
+  /**
    * Callback when editor instance is ready
    */
   onEditorReady?: (editor: any) => void;
@@ -175,6 +184,7 @@ const ChatInput = memo<ChatInputProps>(
     extraActionItems,
     isConfigLoading = false,
     mentionItems,
+    notices,
     controlBarSlot,
     sendMenu,
     sendAreaPrefix,
@@ -469,6 +479,10 @@ const ChatInput = memo<ChatInputProps>(
               zIndex: 10,
             }}
           >
+            {/* A blocking notice outranks the run it is blocking, so it heads the
+                stack. It takes the overlay's own inset like every tray below it,
+                so the whole floating column shares one pair of edges. */}
+            {notices}
             <InputCompletionErrorAlert />
             {!disableQueue && hasQueuedMessages && <QueueTray />}
             <TodoProgress topAttached={!disableQueue && hasQueuedMessages} />
