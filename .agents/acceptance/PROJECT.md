@@ -9,8 +9,13 @@ Its two siblings:
 - [`PROCESS.md`](./PROCESS.md) — the run process (plan gate, execution rules,
   publishing, teardown).
 - `.agents/skills/acceptance/` — the portable skill: what a check, evidence,
-  report, and round are. In this repository that path is a symlink onto the
-  skill's source, `packages/builtin-skills/src/acceptance/`.
+  report, and round are. This is a committed, generated snapshot of
+  [`lobehub/acceptance`](https://github.com/lobehub/acceptance), the only maintenance
+  source. Update it from the repository's current default branch with
+  `bun apps/cli/src/index.ts acceptance update --json`, then review and commit the
+  downloaded files. The JSON records the exact source commit; publishing a tag
+  or release is not required. Do not hand-edit this installed copy.
+  `.claude/skills` shares `.agents/skills`.
 
 Every script referenced below lives under `.agents/acceptance/scripts/`, including
 the generic capture toolchain (`report-init.sh`, `cdp-screenshot.sh`,
