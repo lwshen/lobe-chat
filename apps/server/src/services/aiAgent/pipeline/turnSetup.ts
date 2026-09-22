@@ -528,9 +528,7 @@ export const setupTurn = async (
       // `TopicModel`'s creator-facing reads (`query`, `count`, `queryTopics`,
       // `queryRecent`, `rank`) filter out via `notShareVisitorTopic()`, and
       // what lets shareChat scope reads per visitor (`queryBySender` /
-      // `countBySender`). There is no share-instance column — a visitor
-      // topic is tied to its share purely through `(agentId, senderId)`,
-      // which is unambiguous because `agent_shares` is 1:1 per agent.
+      // `countBySender`).
       senderId: shareGate?.visitorUserId,
       title:
         title !== undefined
