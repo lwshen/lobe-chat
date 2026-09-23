@@ -2640,7 +2640,9 @@ had to take down.
 response at the CDP Fetch layer and leave the product's own guard logic intact:
 
 ```js
-await send('Fetch.enable', { patterns: [{ urlPattern: '*listDevices*', requestStage: 'Response' }] });
+await send('Fetch.enable', {
+  patterns: [{ urlPattern: '*listDevices*', requestStage: 'Response' }],
+});
 // in Fetch.requestPaused: getResponseBody → text.replace(/"online":true/g, '"online":false') → fulfillRequest
 ```
 
@@ -2649,7 +2651,7 @@ fulfilled body is truncated. The interception dies with the CDP connection, so a
 later HMR re-fetch brings the device back online and the banner disappears —
 keep one script alive for the whole capture rather than attaching per step.
 
-The run-status tray needs a *real* operation, not a DOM stub:
+The run-status tray needs a _real_ operation, not a DOM stub:
 
 ```js
 const { useChatStore } = await import('http://localhost:<vitePort>/src/store/chat/index.ts');
@@ -2675,7 +2677,7 @@ the code as the variable.
 Vite server, letting HMR settle between measurements — same route, same data,
 same viewport, same injected state. In a shared working tree take the "after"
 copy with `cp` first and restore from it (never `git stash`, see
-[[feedback_no_git_stash_shared_worktrees]] in the user memory); recover the
+\[\[feedback\_no\_git\_stash\_shared\_worktrees]] in the user memory); recover the
 "before" with `git show HEAD:<path>`. When the tree sits on an unrelated branch,
 write the PR branch's exact file content in for the capture and record the
 sha256 of both sides in the evidence.
