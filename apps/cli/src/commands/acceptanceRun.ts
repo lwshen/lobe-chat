@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path';
 
 import { acceptanceSubjectTypes } from '@lobechat/const/verify';
+import type { VerifyAgentPlanConfig, VerifyCheckItem } from '@lobechat/types';
 import type { Command } from 'commander';
 import pc from 'picocolors';
 
@@ -15,12 +16,14 @@ import { log } from '../utils/logger';
 import type { LinkResult } from '../utils/skillWiring';
 import { linkHarnessSkills } from '../utils/skillWiring';
 import { uploadLocalFile } from '../utils/uploadLocalFile';
+import type { FailedReportEvidence } from './acceptanceEvidence';
+import { uploadReportEvidence } from './acceptanceEvidence';
 import {
   type Decision,
   DECISIONS,
   deriveReportVerdict,
   evidenceDescriptionForFile,
-  evidenceTypeForFile,
+  type EvidenceType,
   genericContextFromResult,
   inlineTextEvidenceForFile,
   interactionCostFromReportDir,
@@ -31,7 +34,6 @@ import {
   printResults,
   pullRequestFromBranch,
   pullRequestFromResult,
-  reportEvidence,
   scenarioFromResult,
   screenProgrammaticTestChecks,
   subjectFromEnv,
@@ -425,17 +427,20 @@ interface EvidenceUploadOptions {
   content?: string;
   desc?: string;
   file?: string;
+  fileId?: string;
   json?: boolean | string;
+  metadata?: string;
   type: string;
 }
 
 async function evidenceUploadAction(options: EvidenceUploadOptions): Promise<void> {
-  if (Boolean(options.file) === Boolean(options.content)) {
-    log.error('Provide exactly one of --file or --content');
+  if ([options.file, options.content, options.fileId].filter(Boolean).length !== 1) {
+    log.error('Provide exactly one of --file, --file-id or --content');
     process.exit(1);
   }
+  const metadata: unknown = options.metadata ? JSON.parse(options.metadata) : undefined;
   const client = await getTrpcClient();
-  let fileId: string | undefined;
+  let fileId = options.fileId;
   let inlineContent = options.content;
   if (options.file) {
     inlineContent = inlineTextEvidenceForFile(options.file, options.type);
@@ -450,6 +455,7 @@ async function evidenceUploadAction(options: EvidenceUploadOptions): Promise<voi
     content: inlineContent,
     description: evidenceDescriptionForFile(options.desc, options.file),
     fileId,
+    metadata,
     type: options.type as any,
   });
   if (options.json !== undefined) {
@@ -662,7 +668,7 @@ async function ingestReportAction(reportDir: string, options: IngestReportOption
 
   // What the run set out to check, written before it ran. Paired with the
   // results by `id`, so the report can show a planned item that never ran.
-  let plan = planFromResult(result, droppedIds);
+  let plan: VerifyCheckItem[] | undefined = planFromResult(result, droppedIds);
 
   const goal = options.goal ?? (typeof result.focus === 'string' ? result.focus : undefined);
   const title = options.title ?? result.title;
@@ -798,6 +804,8 @@ async function ingestReportAction(reportDir: string, options: IngestReportOption
   //     returns, which is the draft round when this run was folded into one.
   const acceptanceId = acceptance.id;
   const attached = await client.acceptance.attachRun.mutate({ acceptanceId, verifyRunId: run.id });
+  // Folding preserves the draft's checks and their evidence requirements.
+  plan = attached?.plan ?? plan;
   const runId = attached?.id ?? run.id;
   if (runId !== run.id)
     console.log(pc.dim(`Folded into the acceptance's draft round ${attached.roundIndex ?? ''}`));
@@ -816,11 +824,14 @@ async function ingestReportAction(reportDir: string, options: IngestReportOption
   const seenCheckItemIds = new Set<string>();
   let evidenceCount = 0;
   let inlined = 0;
+  const failedEvidence: (FailedReportEvidence & { checkItemId: string })[] = [];
+  const missingEvidence: { checkItemId: string; types: EvidenceType[] }[] = [];
+  const publishedVerdicts: Verdict[] = [];
   for (const [index, { case: c, checkItemId }] of cases.entries()) {
     seenCheckItemIds.add(checkItemId);
     const verdict = toVerdict(c.result ?? c.status ?? c.verdict);
     const observation = c.keyObservation ?? c.observation ?? c.note;
-    const checkResult = await client.verify.ingestResult.mutate({
+    const checkInput = {
       checkItemId,
       checkItemIndex: index,
       checkItemTitle: c.name ?? c.case ?? c.title ?? checkItemId,
@@ -833,41 +844,47 @@ async function ingestReportAction(reportDir: string, options: IngestReportOption
       suggestion: typeof c.suggestion === 'string' ? c.suggestion : null,
       toulmin: typeof observation === 'string' ? { evidence: observation } : null,
       verdict,
-      verifierType: 'agent',
+      verifierType: 'agent' as const,
       verifyRunId: runId,
+    };
+    const checkResult = await client.verify.ingestResult.mutate(checkInput);
+    const uploaded = await uploadReportEvidence(client, {
+      checkResultId: checkResult.id,
+      dir,
+      evidence: c.evidence,
     });
-
-    for (const evidenceInput of reportEvidence(c.evidence)) {
-      const rel = evidenceInput.path;
-      const abs = path.isAbsolute(rel) ? rel : path.join(dir, rel);
-      if (!existsSync(abs)) {
-        log.warn(`evidence not found, skipping: ${rel}`);
-        continue;
-      }
-      try {
-        const type = evidenceTypeForFile(abs);
-        const inlineContent = inlineTextEvidenceForFile(abs, type);
-        const file = inlineContent === undefined ? await uploadLocalFile(client, abs) : undefined;
-        await client.verify.uploadEvidence.mutate({
-          capturedBy: 'cli',
-          checkResultId: checkResult.id,
-          // The filename, not the case title — the title already heads the
-          // check card, so reusing it here just triples the same text.
-          content: inlineContent,
-          description: evidenceDescriptionForFile(evidenceInput.description, abs),
-          fileId: file?.id,
-          metadata: evidenceInput.comparison ? { comparison: evidenceInput.comparison } : undefined,
-          type,
-        });
-        evidenceCount += 1;
-        if (inlineContent !== undefined) inlined += 1;
-      } catch (e) {
-        // A stub/unreachable storage bucket (common in local dev) fails the
-        // file PUT — don't abort the whole ingest over one artifact; the
-        // session, results, and report are the deliverable.
-        log.warn(`evidence upload failed, skipping ${path.basename(abs)}: ${String(e)}`);
-      }
+    evidenceCount += uploaded.count;
+    inlined += uploaded.inlined;
+    failedEvidence.push(...uploaded.failedEvidence.map((failure) => ({ ...failure, checkItemId })));
+    const config = plan?.find((item) => item.id === checkItemId)?.verifierConfig as
+      VerifyAgentPlanConfig | undefined;
+    const required = config?.requiredEvidence;
+    const gaps = [...new Set(required?.map((spec) => spec.type) ?? [])].filter(
+      (type) => !uploaded.types.has(type),
+    );
+    const publishedVerdict = gaps.length > 0 && verdict === 'passed' ? 'uncertain' : verdict;
+    publishedVerdicts.push(publishedVerdict);
+    if (gaps.length > 0) {
+      missingEvidence.push({ checkItemId, types: gaps });
+      const limitation = `Required evidence not published: ${gaps.join(', ')}.`;
+      log.warn(`${checkItemId}: ${limitation}`);
+      await client.verify.ingestResult.mutate({
+        ...checkInput,
+        toulmin: { ...checkInput.toulmin, limitation },
+        verdict: publishedVerdict,
+      });
     }
+  }
+
+  const unexecuted = plan?.filter((item) => !seenCheckItemIds.has(item.id)) ?? [];
+  for (const item of unexecuted) {
+    const config = item.verifierConfig as VerifyAgentPlanConfig;
+    const types = [...new Set(config.requiredEvidence?.map((spec) => spec.type) ?? [])];
+    if (types.length === 0) continue;
+    missingEvidence.push({ checkItemId: item.id, types });
+    // Count the gap without inventing an execution result for an unexecuted check.
+    publishedVerdicts.push('uncertain');
+    log.warn(`${item.id}: not executed; required evidence not published: ${types.join(', ')}.`);
   }
 
   // 3. Write the report. `summary` is the overall conclusion (rendered at
@@ -884,29 +901,33 @@ async function ingestReportAction(reportDir: string, options: IngestReportOption
     typeof summary.score === 'number' ? Math.max(0, Math.min(1, summary.score / 100)) : undefined;
   // The authored counts describe the report the author wrote. Once a
   // programmatic-test check is screened out they no longer match what was
-  // published, so recount from the cases that actually landed — a stats block
-  // that disagrees with the visible check list is worse than no stats.
-  const recount = cases.length !== allCases.length;
-  const verdicts = cases.map(({ case: c }) => toVerdict(c.result ?? c.status ?? c.verdict));
-  const counted = (verdict: Verdict) => verdicts.filter((v) => v === verdict).length;
+  // published, so recount the landed cases and unexecuted evidence gaps — a
+  // stats block that disagrees with the visible check list is worse than no stats.
+  const recount = cases.length !== allCases.length || missingEvidence.length > 0;
+  const counted = (verdict: Verdict) => publishedVerdicts.filter((v) => v === verdict).length;
+  const derivedVerdict = deriveReportVerdict(publishedVerdicts.map((verdict) => ({ verdict })));
+  const reportVerdict =
+    summary.verdict && cases.length === allCases.length
+      ? toVerdict(summary.verdict)
+      : derivedVerdict;
   await client.verify.upsertReport.mutate({
     content,
     failedChecks: recount ? counted('failed') : summary.failed,
     overallConfidence: score,
     passedChecks: recount ? counted('passed') : summary.passed,
     summary: conclusion,
-    totalChecks: recount ? cases.length : (summary.total ?? cases.length),
+    totalChecks: recount ? publishedVerdicts.length : (summary.total ?? cases.length),
     uncertainChecks: recount
       ? counted('uncertain') || undefined
       : (summary.blocked ?? 0) + (summary.uncertain ?? 0) || undefined,
-    // An explicit summary.verdict wins; otherwise the headline is derived
-    // from the ingested cases (deriveReportVerdict) so no report ships
-    // verdict-less and lists as a permanent "?". After a screen the authored
-    // verdict may have been about a check that is no longer here, so rederive.
+    // Missing evidence cannot be overridden by an authored "passed" summary.
+    // Keep a real failure rather than hiding it behind an evidence warning.
     verdict:
-      summary.verdict && !recount
-        ? toVerdict(summary.verdict)
-        : deriveReportVerdict(cases.map(({ case: c }) => c)),
+      missingEvidence.length > 0
+        ? reportVerdict === 'failed' || derivedVerdict === 'failed'
+          ? 'failed'
+          : 'uncertain'
+        : reportVerdict,
     verifyRunId: runId,
   });
 
@@ -945,6 +966,24 @@ async function ingestReportAction(reportDir: string, options: IngestReportOption
     ? [...seenCheckItemIds].filter((id) => !plan.some((item) => item.id === id))
     : [];
 
+  const partial = failedEvidence.length > 0 || missingEvidence.length > 0;
+  if (partial) {
+    process.exitCode = 1;
+    log.warn(
+      'Report saved, but evidence publication is incomplete. Keep the local artifacts; retry only the missing evidence, not the whole ingest. Supplementing evidence does not change recorded verdicts.',
+    );
+    if (missingEvidence.some(({ checkItemId }) => !seenCheckItemIds.has(checkItemId))) {
+      log.warn(
+        'Unexecuted checks have no result to attach evidence to. Execute them and publish a new round on the same acceptance; do not re-ingest this unchanged report.',
+      );
+    }
+    if (failedEvidence.some((failure) => failure.reason === 'storage_quota')) {
+      log.warn(
+        'Acceptance evidence uses your personal file storage quota. Free space or upgrade your storage plan, then retry the failed artifacts.',
+      );
+    }
+  }
+
   if (options.json !== undefined) {
     outputJson(
       {
@@ -953,15 +992,19 @@ async function ingestReportAction(reportDir: string, options: IngestReportOption
         cases: cases.length,
         droppedProgrammaticChecks: droppedLabels,
         evidence: evidenceCount,
+        failedEvidence,
         inlined,
+        missingEvidence,
         origin,
         planItems: plan?.length ?? 0,
         proposalPosted,
+        publicationStatus: partial ? 'partial' : 'complete',
         pullRequest,
         roundIndex,
         roundUrl,
         scenario,
         subject: subject!.ref,
+        unexecuted: unexecuted.map((item) => item.id),
         unplanned,
         verifyRunId: runId,
       },
@@ -971,12 +1014,17 @@ async function ingestReportAction(reportDir: string, options: IngestReportOption
   }
 
   console.log(
-    `${pc.green('✓')} Ingested ${pc.bold(String(cases.length))} case(s), ${pc.bold(String(evidenceCount))} evidence artifact(s)` +
+    `${partial ? pc.yellow('⚠ Partially published') : pc.green('✓ Ingested')} ${pc.bold(String(cases.length))} case(s), ${pc.bold(String(evidenceCount))} evidence artifact(s)` +
       `${inlined > 0 ? `, ${pc.bold(String(inlined))} inline` : ''}` +
       `${droppedLabels.length > 0 ? pc.yellow(` — ${droppedLabels.length} programmatic-test check(s) dropped`) : ''}`,
   );
+  for (const failure of failedEvidence) {
+    console.log(`${pc.yellow('retry (POSIX shell)')}: ${failure.retryCommand}`);
+    console.log(
+      `${pc.dim('retryArgs (lh, shell disabled)')}: ${JSON.stringify(failure.retryArgs)}`,
+    );
+  }
   if (plan?.length) {
-    const unexecuted = plan.filter((item) => !seenCheckItemIds.has(item.id));
     console.log(
       `${pc.bold('plan')}: ${plan.length} item(s)` +
         `${unexecuted.length > 0 ? pc.yellow(` — ${unexecuted.length} planned but not executed`) : ''}` +
@@ -992,7 +1040,7 @@ async function ingestReportAction(reportDir: string, options: IngestReportOption
       ? 'standalone'
       : `${subject!.ref.subjectType}:${subject!.ref.subjectId}`;
   console.log(`${pc.bold('acceptance')}: ${acceptanceId} ${pc.dim(`(${subjectLabel})`)}`);
-  if (options.open) {
+  if (options.open || partial) {
     // The acceptance page is the only link surfaced to users — the raw /verify
     // page stays internal. `?r=<roundIndex>` is this round's fixed snapshot.
     console.log(`${pc.bold('open acceptance')}: ${acceptanceUrl}`);
@@ -1076,7 +1124,9 @@ function withEvidenceUploadOptions(cmd: Command): Command {
     .requiredOption('--check <checkResultId>', 'Target check result id')
     .requiredOption('--type <type>', 'screenshot|gif|video|text|dom_snapshot|transcript')
     .option('--file <path>', 'Local file to upload as the artifact')
+    .option('--file-id <id>', 'Attach an already-uploaded file without uploading it again')
     .option('--content <text>', 'Inline text payload (instead of a file)')
+    .option('--metadata <json>', 'Evidence metadata, preserved when retrying an attachment')
     .option('--by <capturedBy>', 'agent-browser|cdp|cli|program|llm_judge', 'cli')
     .option('--desc <text>', 'Human-readable caption')
     .option('--json [fields]', 'Output JSON');
