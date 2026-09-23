@@ -9,6 +9,7 @@ import { getAgentShareMonthlySpend } from '@/business/server/agent-share/spendGa
 import { withRbacPermission } from '@/business/server/trpc-middlewares/rbacPermission';
 import { wsCompatProcedure } from '@/business/server/trpc-middlewares/workspaceAuth';
 import { AgentShareModel } from '@/database/models/agentShare';
+import { AgentShareProfileModel } from '@/database/models/agentShareProfile';
 import { FileModel } from '@/database/models/file';
 import { RbacModel } from '@/database/models/rbac';
 import { TopicModel } from '@/database/models/topic';
@@ -47,6 +48,22 @@ export const agentShareConfigSchema = z
   .object({
     allowCreatorViewSessions: z.boolean().optional(),
     allowReadMemory: z.boolean().optional(),
+    demoCases: z
+      .array(
+        z
+          .object({
+            description: z.string().trim().max(2000),
+            prompt: z.string().trim().min(1).max(10000),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
+    featuredWorkIds: z
+      .array(z.string().trim().min(1))
+      .max(100)
+      .refine((ids) => new Set(ids).size === ids.length, 'Duplicate featured Work')
+      .optional(),
     /** Bytes; `0` is a real value (attachments off), so non-negative rather than positive. */
     maxFileStorage: z.number().int().nonnegative().optional(),
     /**
@@ -105,6 +122,7 @@ const agentShareProcedure = wsCompatProcedure.use(serverDatabase).use(async (opt
               })
           : undefined,
       }),
+      agentShareProfileModel: new AgentShareProfileModel(ctx.serverDB, ctx.userId),
     },
   });
 });
@@ -292,6 +310,28 @@ export const agentShareRouter = router({
         ),
       ),
     ),
+
+  /** Owner-only candidate Works for the share profile editor. */
+  listEligibleWorks: agentShareProcedure
+    .input(
+      agentIdInput.extend({
+        includeWorkIds: z
+          .array(z.string().trim().min(1))
+          .max(100)
+          .refine((ids) => new Set(ids).size === ids.length, 'Duplicate selected Work')
+          .optional(),
+        limit: z.number().int().positive().max(50).optional(),
+        offset: z.number().int().nonnegative().max(10000).optional(),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      requireShare(await ctx.agentShareModel.getByAgentId(input.agentId));
+      return ctx.agentShareProfileModel.listEligibleWorks(input.agentId, {
+        includeWorkIds: input.includeWorkIds ?? [],
+        limit: input.limit,
+        offset: input.offset,
+      });
+    }),
 
   updateShareConfig: agentShareProcedure
     .input(
