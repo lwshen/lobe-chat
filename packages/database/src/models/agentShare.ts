@@ -52,6 +52,11 @@ const normalizeAgentShareConfig = (
   monthlySpendLimit: config?.monthlySpendLimit ?? DEFAULT_AGENT_SHARE_CONFIG.monthlySpendLimit,
   showErrorDetails: config?.showErrorDetails ?? DEFAULT_AGENT_SHARE_CONFIG.showErrorDetails,
   showModelInfo: config?.showModelInfo ?? DEFAULT_AGENT_SHARE_CONFIG.showModelInfo,
+  /**
+   * Left absent rather than defaulted to `[]`: both read as "no skill
+   * granted", so a default would only write a value the creator never picked.
+   */
+  skillGrants: config?.skillGrants,
   slug: config?.slug,
   toolGrants: config?.toolGrants ?? DEFAULT_AGENT_SHARE_CONFIG.toolGrants,
 });
