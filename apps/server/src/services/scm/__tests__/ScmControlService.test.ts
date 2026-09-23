@@ -13,6 +13,8 @@ import {
   users,
   verifyRuns,
   works,
+  workspaceMembers,
+  workspaces,
 } from '@/database/schemas';
 
 import { SCM_MAX_WAKES, ScmControlService } from '../ScmControlService';
@@ -600,6 +602,106 @@ describe('ScmControlService — wake', () => {
     expect(flipped.status).toBe('merged');
   });
 
+  it('stops acting on an author-routed row once the author cannot write there', async () => {
+    const [workspace] = await serverDB
+      .insert(workspaces)
+      .values({ name: 'ws', primaryOwnerId: userId, slug: 'scm-control-left-ws' })
+      .returning();
+    await serverDB
+      .insert(workspaceMembers)
+      .values({ role: 'member', userId, workspaceId: workspace.id });
+    const topic = await createTopic();
+    // Routed to the author when the pull request opened, into a workspace
+    // they could write to then.
+    const row = await ScmChangeRequestModel.upsert(serverDB, {
+      ...baseRow,
+      links: { topicId: topic.id },
+      metadata: { routedBy: 'author' },
+      workspaceId: workspace.id,
+    });
+
+    // A later check or review reuses the stored row. Leaving the workspace,
+    // or being made a viewer, has to stop it there.
+    for (const change of [{ role: 'viewer' }, { deletedAt: new Date() }]) {
+      await serverDB
+        .update(workspaceMembers)
+        .set(change)
+        .where(eq(workspaceMembers.workspaceId, workspace.id));
+      expect(await control().handle({ event: checksEvent, kind: 'ci_failed', row })).toEqual({
+        detail: 'owner can no longer write to this workspace',
+        outcome: 'skipped',
+      });
+    }
+    expect(mocks.execAgent).not.toHaveBeenCalled();
+
+    // The merge itself is still mirrored: the gate covers what we do on the
+    // author's behalf, not the record of what GitHub reported.
+    const [work] = await serverDB
+      .insert(works)
+      .values({
+        resourceId: 'arvinxx/sandbox#5',
+        resourceType: 'github_pull_request',
+        status: 'open',
+        toolIdentifier: 'lobe-local-system',
+        toolName: 'runCommand',
+        type: 'external',
+        userId,
+        visibility: 'private',
+      })
+      .returning();
+    expect(
+      await control().handle({
+        event: changeRequestEvent('merged'),
+        kind: 'merged',
+        row: { ...row, state: 'merged', workId: work.id },
+      }),
+    ).toMatchObject({ outcome: 'skipped' });
+    const [mirrored] = await serverDB.select().from(works).where(eq(works.id, work.id));
+    expect(mirrored.status).toBe('merged');
+
+    await serverDB.delete(workspaces).where(eq(workspaces.id, workspace.id));
+  });
+
+  it("reads the switches of whoever connected the installation, not the author's", async () => {
+    // The org owner connected the installation and turned accepting on
+    // merge off; the author routed to never touched their switches.
+    const installer = 'scm-control-installer';
+    await serverDB.insert(users).values({
+      id: installer,
+      preference: { integration: { github: { acceptOnMerge: false } } } as any,
+    });
+    const installation = await ScmInstallationModel.bind(serverDB, {
+      accountExternalId: '1',
+      accountLogin: 'lobehub',
+      accountType: 'organization',
+      installationId: '90001',
+      provider: 'github',
+      repositorySelection: 'all',
+      userId: installer,
+    });
+    const [acceptance] = await serverDB
+      .insert(acceptances)
+      .values({ status: 'delivered', subjectId: 's', subjectType: 'standalone', userId })
+      .returning();
+    const row = await ScmChangeRequestModel.upsert(serverDB, {
+      ...baseRow,
+      links: { acceptanceId: acceptance.id, installationId: installation.id },
+      metadata: { routedBy: 'author' },
+      state: 'merged',
+    });
+
+    expect(
+      await control().handle({ event: changeRequestEvent('merged'), kind: 'merged', row }),
+    ).toMatchObject({ detail: 'acceptOnMerge is off', outcome: 'skipped' });
+    const [after] = await serverDB
+      .select()
+      .from(acceptances)
+      .where(eq(acceptances.id, acceptance.id));
+    expect(after.status).toBe('delivered');
+
+    await serverDB.delete(users).where(eq(users.id, installer));
+  });
+
   it('reports a failed wake without counting it', async () => {
     const topic = await createTopic();
     const row = await ScmChangeRequestModel.upsert(serverDB, {
@@ -638,6 +740,41 @@ describe('ScmControlService — the tracking comment in GitHub', () => {
       ...extra,
     });
   };
+
+  it("leaves someone else's personal conversation out of the public comment", async () => {
+    // An org installation connected by someone else; the pull request was
+    // routed to the author's personal conversation.
+    const installer = 'scm-control-installer-2';
+    await serverDB.insert(users).values({ id: installer });
+    const topic = await createTopic();
+    const installation = await ScmInstallationModel.bind(serverDB, {
+      accountExternalId: '1',
+      accountLogin: 'lobehub',
+      accountType: 'organization',
+      installationId: '90001',
+      provider: 'github',
+      repositorySelection: 'all',
+      userId: installer,
+    });
+    const [acceptance] = await serverDB
+      .insert(acceptances)
+      .values({ status: 'delivered', subjectId: 's', subjectType: 'standalone', userId })
+      .returning();
+    const row = await ScmChangeRequestModel.upsert(serverDB, {
+      ...baseRow,
+      links: { acceptanceId: acceptance.id, installationId: installation.id, topicId: topic.id },
+      metadata: { repoPrivate: true, routedBy: 'author' },
+    });
+
+    await control().handle({ event: changeRequestEvent('opened'), kind: 'opened', row });
+
+    const body = mocks.postComment.mock.calls[0][0].body as string;
+    expect(body).not.toContain('PR topic');
+    expect(body).not.toContain(`/agent/agt_control/${topic.id}`);
+    expect(body).toContain(`https://app.test/acceptance/${acceptance.id}`);
+
+    await serverDB.delete(users).where(eq(users.id, installer));
+  });
 
   it('posts one comment with a hidden marker and a status table, then rewrites it in place', async () => {
     const row = await bindAndOpen({ metadata: { repoPrivate: true } });

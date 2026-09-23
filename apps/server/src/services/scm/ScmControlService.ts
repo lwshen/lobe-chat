@@ -21,6 +21,7 @@ import {
   postGitHubPullRequestComment,
   updateGitHubPullRequestComment,
 } from './github/app';
+import { canWriteScmScope } from './scope';
 import { buildTrackingComment } from './trackingComment';
 import type { ScmInboundEvent } from './types';
 import { buildCiFailurePrompt, buildReviewPrompt, type ScmWakeReason } from './wakePrompt';
@@ -74,6 +75,19 @@ export class ScmControlService {
   constructor(private db: LobeChatDatabase) {}
 
   handle = async (params: ScmControlEvent): Promise<ScmControlOutcome> => {
+    // An author-routed row points into whatever scope the author's records
+    // live in, and that was decided when the pull request opened. Checks and
+    // reviews reuse the stored row, so without asking again a member who
+    // has since left — or been made a viewer — would still get merges
+    // accepting and failures waking runs in that workspace.
+    if (!(await this.ownerCanStillWrite(params.row))) {
+      // The gate is for what we do on the author's behalf. The Work row only
+      // records what GitHub reported, and a merge left unmirrored would sit
+      // in the workspace as an open Work forever.
+      if (params.kind === 'merged') await this.mirrorMerge(params.row);
+      return { detail: 'owner can no longer write to this workspace', outcome: 'skipped' };
+    }
+
     const outcome = await this.route(params);
     // A failure the debounce window swallowed rides along with the next
     // event, whatever that event was.
@@ -93,9 +107,7 @@ export class ScmControlService {
         // The Work row mirrors what GitHub says about the pull request, so
         // it follows the merge whatever the automation switches say; only
         // the acceptance verdict is opt-out.
-        if (row.workId) {
-          await this.db.update(works).set({ status: 'merged' }).where(eq(works.id, row.workId));
-        }
+        await this.mirrorMerge(row);
         if (!(await this.isEnabled(row, 'acceptOnMerge'))) {
           return { detail: 'acceptOnMerge is off', outcome: 'skipped' };
         }
@@ -161,10 +173,43 @@ export class ScmControlService {
     key: keyof GithubIntegrationPreference,
   ): Promise<boolean> => (await this.preference(row))?.[key] !== false;
 
+  private ownerCanStillWrite = async (row: ScmChangeRequestItem): Promise<boolean> =>
+    row.metadata?.routedBy !== 'author' ||
+    !row.workspaceId ||
+    canWriteScmScope(this.db, row.userId, row.workspaceId);
+
+  private conversationIsInstallers = async (row: ScmChangeRequestItem): Promise<boolean> => {
+    if (row.metadata?.routedBy !== 'author' || !row.installationId) return true;
+    const installation = await ScmInstallationModel.findById(this.db, row.installationId);
+    if (!installation) return false;
+    // Inside the installation's own workspace the conversation is the
+    // tenant's; anywhere else it is only the installer's if it is theirs.
+    return installation.workspaceId
+      ? row.workspaceId === installation.workspaceId
+      : !row.workspaceId && row.userId === installation.userId;
+  };
+
+  /** The Work row mirrors GitHub; it follows a merge whatever else is decided. */
+  private mirrorMerge = async (row: ScmChangeRequestItem): Promise<void> => {
+    if (!row.workId) return;
+    await this.db.update(works).set({ status: 'merged' }).where(eq(works.id, row.workId));
+  };
+
+  /**
+   * The switches belong to whoever connected the installation, not to the
+   * row's owner. With author routing those are different people, and an
+   * installer's explicit opt-out — no accepting on merge, no comments on
+   * private repositories — must not be undone by an author's defaults.
+   */
   private preference = async (
     row: ScmChangeRequestItem,
-  ): Promise<GithubIntegrationPreference | undefined> =>
-    (await new UserModel(this.db, row.userId).getUserPreference())?.integration?.github;
+  ): Promise<GithubIntegrationPreference | undefined> => {
+    const installation = row.installationId
+      ? await ScmInstallationModel.findById(this.db, row.installationId)
+      : null;
+    const userId = installation?.userId ?? row.userId;
+    return (await new UserModel(this.db, userId).getUserPreference())?.integration?.github;
+  };
 
   // --------------- tracking comment ---------------
 
@@ -278,7 +323,13 @@ export class ScmControlService {
     }
 
     let conversation: { title?: string | null; url: string } | null = null;
-    if (row.topicId) {
+    // An author-routed pull request can link someone's personal
+    // conversation, while the comment is posted under the installer's
+    // switches onto a repository that person does not control. Its title
+    // and address are theirs to publish, not the installer's, so the
+    // comment names a conversation only when it belongs to the tenant that
+    // connected the installation.
+    if (row.topicId && (await this.conversationIsInstallers(row))) {
       const topic = await new TopicModel(
         this.db,
         row.userId,
