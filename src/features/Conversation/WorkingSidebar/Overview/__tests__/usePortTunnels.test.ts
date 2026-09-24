@@ -16,18 +16,30 @@ const tunnels = vi.hoisted(() => ({
   value: [] as unknown[] | undefined,
 }));
 const isDesktop = vi.hoisted(() => ({ value: false }));
+const detection = vi.hoisted(() => ({
+  data: undefined as unknown,
+  isLoading: false,
+  isValidating: false,
+  mutate: vi.fn(),
+}));
 
 vi.mock('@/services/device', () => ({
   deviceService: { createTunnel, openTunnel, revokeTunnel },
 }));
 
+const tunnelsEnabledArgs = vi.hoisted(() => [] as boolean[]);
+
 vi.mock('@/store/device', () => ({
-  useFetchDeviceTunnels: () => ({
-    data: tunnels.value,
-    error: tunnels.error,
-    isLoading: tunnels.isLoading,
-    mutate,
-  }),
+  useFetchDeviceListeningPorts: () => detection,
+  useFetchDeviceTunnels: (_deviceId: string, enabled: boolean) => {
+    tunnelsEnabledArgs.push(enabled);
+    return {
+      data: tunnels.value,
+      error: tunnels.error,
+      isLoading: tunnels.isLoading,
+      mutate,
+    };
+  },
 }));
 
 vi.mock('@lobechat/const', () => ({
@@ -55,7 +67,10 @@ const link = {
 };
 
 const onOpened = vi.fn();
-const setup = () => renderHook(() => usePortTunnels('device-1', true, onOpened));
+const setup = () =>
+  renderHook(() =>
+    usePortTunnels({ active: true, cwd: '/work/app', deviceId: 'device-1', onOpened, open: true }),
+  );
 
 /** A pre-opened tab: `window.open` is called before the token round trip. */
 const tab = { close: vi.fn(), location: { href: '' }, opener: {} as unknown };
@@ -66,6 +81,9 @@ beforeEach(() => {
   tunnels.error = undefined;
   tunnels.isLoading = false;
   isDesktop.value = false;
+  detection.data = undefined;
+  detection.isLoading = false;
+  detection.isValidating = false;
   tab.location.href = '';
   tab.opener = {};
   vi.stubGlobal(
@@ -82,28 +100,22 @@ describe('usePortTunnels', () => {
     });
     const { result } = setup();
 
-    act(() => result.current.setPort('3000'));
-    await act(() => result.current.exposePort());
+    await act(() => result.current.exposePort(3000));
 
     expect(createTunnel).toHaveBeenCalledWith({ deviceId: 'device-1', port: 3000 });
-    // Typing a port means "let me see it": no second click to open it.
+    // Choosing a port means "let me see it": no second click to open it.
     expect(tab.location.href).toBe('https://3000--abcdefgh.lobe.sh/?token=fresh');
-    expect(result.current.port).toBe('');
     expect(onOpened).toHaveBeenCalled();
   });
 
-  it.each(['0', '70000', 'abc', '', '  ', '80.5'])(
-    'refuses %j without calling the server',
-    async (value) => {
-      const { result } = setup();
+  it.each([0, 70_000, 80.5, Number.NaN])('refuses %j without calling the server', async (value) => {
+    const { result } = setup();
 
-      act(() => result.current.setPort(value));
-      await act(() => result.current.exposePort());
+    await act(() => result.current.exposePort(value));
 
-      expect(toastError).toHaveBeenCalledWith('workingPanel.overview.ports.invalidPort');
-      expect(createTunnel).not.toHaveBeenCalled();
-    },
-  );
+    expect(toastError).toHaveBeenCalledWith('workingPanel.overview.ports.invalidPort');
+    expect(createTunnel).not.toHaveBeenCalled();
+  });
 
   it('opens an existing link with a freshly minted token, never the stored URL', async () => {
     tunnels.value = [link];
@@ -143,13 +155,12 @@ describe('usePortTunnels', () => {
     createTunnel.mockRejectedValue(new Error('offline'));
     const { result } = setup();
 
-    act(() => result.current.setPort('5173'));
-    await act(() => result.current.exposePort());
+    await act(() => result.current.exposePort(5173));
 
     expect(toastError).toHaveBeenCalledWith('workingPanel.overview.ports.createFailed');
     // The reserved tab must not be left sitting on about:blank.
     expect(tab.close).toHaveBeenCalled();
-    expect(result.current.creating).toBe(false);
+    expect(result.current.creatingPort).toBeUndefined();
   });
 
   it('never navigates to a non-http URL the server might return', async () => {
@@ -218,5 +229,67 @@ describe('usePortTunnels', () => {
       // "nothing is exposed".
       expect(setup().result.current.error).toBeTruthy();
     });
+  });
+
+  describe('detected ports', () => {
+    const port = (overrides: Record<string, unknown>) => ({
+      command: 'node',
+      inProject: true,
+      loopback: 'both',
+      port: 5173,
+      ...overrides,
+    });
+
+    it('offers the project ports that are not exposed yet, and keeps the rest aside', () => {
+      tunnels.value = [link]; // 3000 is already exposed
+      detection.data = {
+        ports: [
+          port({ port: 3000 }),
+          port({ port: 5173 }),
+          port({ command: 'postgres', inProject: false, port: 5432 }),
+        ],
+        supported: true,
+      };
+
+      const { result } = setup();
+
+      expect(result.current.detected.map((p) => p.port)).toEqual([5173]);
+      expect(result.current.otherPorts.map((p) => p.port)).toEqual([5432]);
+      expect(result.current.detectionAvailable).toBe(true);
+    });
+
+    it('drops a port from the detected list once it has a link', () => {
+      tunnels.value = [link];
+      detection.data = { ports: [port({ port: 3000 })], supported: true };
+
+      // The exposed row on top already shows it, with its link.
+      expect(setup().result.current).toMatchObject({ detected: [], otherPorts: [] });
+    });
+
+    it('reports no detection for a device that cannot answer', () => {
+      detection.data = null;
+      expect(setup().result.current).toMatchObject({ detected: [], detectionAvailable: false });
+    });
+
+    it('shows a rescan in progress even though the previous answer is still there', () => {
+      detection.data = { ports: [port({ port: 3000 })], supported: true };
+      detection.isValidating = true;
+      expect(setup().result.current.detectionLoading).toBe(true);
+    });
+  });
+
+  it('reads the link list while the panel shows, so the badge never counts an exposed port', () => {
+    tunnelsEnabledArgs.length = 0;
+    renderHook(() =>
+      usePortTunnels({
+        active: true,
+        cwd: '/work/app',
+        deviceId: 'device-1',
+        onOpened,
+        open: false,
+      }),
+    );
+    // Menu closed, panel showing: the list must still be requested.
+    expect(tunnelsEnabledArgs.at(-1)).toBe(true);
   });
 });
