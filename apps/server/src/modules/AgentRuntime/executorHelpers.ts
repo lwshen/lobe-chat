@@ -24,6 +24,7 @@ import { archiveToolResultIfNeeded } from '@/server/services/toolExecution/archi
 import { buildWorkVersionCumulativeUsage } from '@/utils/workCumulativeUsage';
 
 import { type RuntimeExecutorContext } from './context';
+import { resolveRunActiveDeviceId } from './executors/resolveRunActiveDeviceId';
 
 export const log = debug('lobe-server:agent-runtime:streaming-executors');
 export const timing = debug('lobe-server:agent-runtime:timing');
@@ -57,6 +58,7 @@ export const archiveRuntimeToolResult = async (
   result: ToolExecutionResultResponse,
   {
     agentId,
+    canReadArchive,
     identifier,
     limit,
     serverDB,
@@ -66,6 +68,7 @@ export const archiveRuntimeToolResult = async (
     workspaceId,
   }: {
     agentId?: string | null;
+    canReadArchive?: boolean;
     identifier?: string;
     limit?: number;
     serverDB: LobeChatDatabase;
@@ -77,6 +80,7 @@ export const archiveRuntimeToolResult = async (
 ): Promise<ToolExecutionResultResponse> => {
   const archive = await archiveToolResultIfNeeded({
     agentId,
+    canReadArchive,
     content: result.content,
     identifier,
     limit,
@@ -237,9 +241,17 @@ export const buildServerVirtualSubAgentRunner = (
   // keeps the topic-pinned model only in `modelRuntimeConfig` while the
   // world config retains the agent default.
   const parentEffectiveModel = state.modelRuntimeConfig ?? parentAgentConfig;
+  // The device the parent run executes on. The child re-resolves its own
+  // execution plan, and without this it falls back to the agent-level
+  // `boundDeviceId` — whichever machine last picked "this device" — so with two
+  // desktops online the parent and the child land on different machines. An
+  // anonymous `callSubAgent` clone requests this device outright; a named
+  // `callAgent` target only takes it as its `local` device, keeping its own
+  // execution target.
+  const parentDeviceId = resolveRunActiveDeviceId(state);
 
   return {
-    run: async ({ agentId: targetAgentId, description, instruction, timeout }) => {
+    run: async ({ agentId: targetAgentId, description, instruction, subAgentId, timeout }) => {
       // This runner serves two tools, and only one of them may swap the model:
       //   - `callSubAgent` names no agent, so the child is an anonymous clone of
       //     the parent — it takes the parent's `agencyConfig.subagent` override,
@@ -268,7 +280,11 @@ export const buildServerVirtualSubAgentRunner = (
         groupId: state.origin?.groupId ?? undefined,
         parentId: parentMessageId,
         plugin: chatToolPayload as any,
-        pluginState: { status: 'pending' },
+        // A continued sub-agent already has its thread, so the card can link to
+        // it while the new turn is still running.
+        pluginState: subAgentId
+          ? { status: 'pending', threadId: subAgentId }
+          : { status: 'pending' },
         role: 'tool',
         threadId: state.origin?.threadId,
         tool_call_id: chatToolPayload.id,
@@ -281,12 +297,15 @@ export const buildServerVirtualSubAgentRunner = (
       const result = (await execVirtualSubAgent({
         agentId: targetAgentId ?? agentId,
         chatConfig: subAgentChatConfig,
+        deviceId: targetAgentId ? undefined : parentDeviceId,
         groupId: state.origin?.groupId ?? undefined,
         instruction,
+        localDeviceId: parentDeviceId,
         model: subAgentModel?.model,
         parentMessageId: placeholder.id,
         parentOperationId: ctx.operationId,
         provider: subAgentModel?.provider,
+        threadId: subAgentId,
         timeout,
         title: description,
         topicId,

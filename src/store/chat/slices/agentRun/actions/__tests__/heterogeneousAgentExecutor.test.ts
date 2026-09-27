@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useAiInfraStore } from '@/store/aiInfra';
 import { useChatStore } from '@/store/chat/store';
+import { useElectronStore } from '@/store/electron';
 import { useUserStore } from '@/store/user';
 
 import { createGatewayEventHandler } from '../transports/gateway/gatewayEventHandler';
@@ -1334,7 +1335,7 @@ describe('heterogeneousAgentExecutor DB persistence', () => {
      * CC SDK mode keeps the transport open after `result`, so the terminal
      * flush can land minutes later — but `visible_output_end` already lets the
      * user send a follow-up, whose server response replaces the store. The
-     * final text must hit the DB before the UI is unlocked (LOBE-14345).
+     * final text must hit the DB before the UI is unlocked.
      */
     it('persists the final text before unlocking follow-ups on visible_output_end', async () => {
       const store = createMockStore();
@@ -2868,6 +2869,33 @@ describe('heterogeneousAgentExecutor DB persistence', () => {
         workingDirectory: '/Users/me/repo',
         workingDirectoryConfig: { path: '/Users/me/repo' },
       });
+    });
+
+    // The session now lives on this machine, so the topic is pinned here —
+    // otherwise a legacy unbound topic follows whatever the agent default
+    // becomes and its next turn cannot resume.
+    it('pins the topic to this machine when it persists the session id', async () => {
+      useElectronStore.setState({ gatewayDeviceInfo: { deviceId: 'this-desktop' } as any });
+      const store = createMockStore({
+        topicDataMap: { 'agent-1__main': { items: [{ id: 'topic-1', metadata: {} }] } },
+      });
+      store.updateTopicMetadata = vi.fn(async () => {});
+      const get = vi.fn(() => store);
+      mockSendPrompt.mockImplementation(() => new Promise<void>(() => {}));
+
+      void executeHeterogeneousAgent(get, { ...defaultParams, workingDirectory: '/repo' });
+      await flush();
+      ipc.emitRawLine('ipc-sess-1', ccInit('cc-session-here'));
+      await flush();
+
+      expect(store.updateTopicMetadata).toHaveBeenCalledWith(
+        'topic-1',
+        expect.objectContaining({
+          boundDeviceId: 'this-desktop',
+          heteroSessionId: 'cc-session-here',
+        }),
+      );
+      useElectronStore.setState({ gatewayDeviceInfo: undefined });
     });
 
     it('persists a newly reported session id even when sendPrompt exits non-zero', async () => {

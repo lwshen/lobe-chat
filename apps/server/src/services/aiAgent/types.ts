@@ -59,6 +59,8 @@ export interface ExecRunContext {
    * ordinary (non-share) run.
    */
   shareGate?: AgentShareGate;
+  /** The group a reused Group Agent Builder topic was opened on — see `TurnSetupResult`. */
+  topicEditingGroupId?: string;
   /** Topic id — guaranteed to exist by the time pipeline stages run. */
   topicId: string;
   trigger?: string;
@@ -308,6 +310,16 @@ export interface InternalExecAgentParams extends ExecAgentParams {
  * project path placeholder (and the tool cwd/scope downstream) without re-loading
  * the device + topic the scan already read.
  */
+export interface BindTopicWorkingDirectoryParams {
+  config?: WorkingDirConfig;
+  /** The topic's existing `metadata.boundDeviceId`, if any. */
+  currentDeviceId?: string;
+  currentWorkingDirectory?: string;
+  /** The device {@link config} was resolved for. */
+  deviceId?: string;
+  topicId: string;
+}
+
 export interface ResolvedWorkspaceInit {
   boundCwd?: string;
   /**
@@ -317,6 +329,8 @@ export interface ResolvedWorkspaceInit {
    * a linked worktree must still file under its repo.
    */
   boundCwdConfig?: WorkingDirConfig;
+  /** The device the topic's cwd is pinned on (`topic.metadata.boundDeviceId`). */
+  topicDeviceId?: string;
   /**
    * The cwd the topic was ALREADY pinned to, so a caller can tell a first-time
    * binding from a no-op rewrite without re-reading the topic row.
