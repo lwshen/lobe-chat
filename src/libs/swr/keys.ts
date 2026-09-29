@@ -363,6 +363,8 @@ export const isMyTaskListKey = (key: unknown): boolean =>
 export const goalKeys = {
   graph: def('goal:graph', (goalId: string) => ['goal:graph', goalId]),
   metricSeries: def('goal:metricSeries', (goalId: string) => ['goal:metricSeries', goalId]),
+  /** Clarifications waiting on the user across every goal they own. */
+  pendingClarifications: def('goal:pendingClarifications', () => ['goal:pendingClarifications']),
   /** Goals whose planning conversation is this topic (`subject_type = 'topic'`). */
   topicGoals: def('goal:topicGoals', (topicId: string) => ['goal:topicGoals', topicId]),
 };
@@ -836,6 +838,11 @@ export const knowledgeBaseKeys = {
 };
 
 // ---- device -------------------------------------------------------------
+export const trashKeys = {
+  countByType: def('trash:countByType', () => ['trash:countByType']),
+  list: def('trash:list', (resourceType?: string | null) => ['trash:list', resourceType ?? 'all']),
+};
+
 export const deviceKeys = {
   appUpdateState: def('device:appUpdateState', (workspaceId: string | null, deviceId: string) => [
     'device:appUpdateState',
@@ -1133,6 +1140,15 @@ export const expertiseKeys = {
   ]),
   lesson: def('expertise:lesson', (lessonId: string) => ['expertise:lesson', lessonId]),
   overview: def('expertise:overview', (agentId: string) => ['expertise:overview', agentId]),
+  ruleRevisions: def('expertise:ruleRevisions', (lessonId: string) => [
+    'expertise:ruleRevisions',
+    lessonId,
+  ]),
+  ruleSources: def('expertise:ruleSources', (lessonId: string) => [
+    'expertise:ruleSources',
+    lessonId,
+  ]),
+  rules: def('expertise:rules', () => ['expertise:rules']),
 };
 
 export const verifyKeys = {
@@ -1580,6 +1596,7 @@ export const swrKeys = {
   documentComment: documentCommentKeys,
   documentLike: documentLikeKeys,
   topicAction: topicActionKeys,
+  trash: trashKeys,
   user: userKeys,
   userMemory: userMemoryKeys,
   verify: verifyKeys,
