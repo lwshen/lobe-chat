@@ -218,6 +218,40 @@ export function registerGoalCommand(program: Command) {
     );
 
   goal
+    .command('report <id>')
+    .description("Submit this Goal's wrap-up report from its wrap-up run")
+    .requiredOption(
+      '--metadata-file <path>',
+      'JSON: headline, deliverableWorkId, chapters, mainline, nextSteps, graphCursor',
+    )
+    .requiredOption('--content-file <path>', 'The full written report in markdown')
+    .option('--operation <id>', 'Defaults to LOBEHUB_OPERATION_ID')
+    .option('--json', 'Output JSON')
+    .action(
+      async (
+        id: string,
+        options: { contentFile: string; json?: boolean; metadataFile: string; operation?: string },
+      ) => {
+        const operationId = options.operation ?? process.env.LOBEHUB_OPERATION_ID;
+        if (!operationId) throw new Error('Current wrap-up operation ID required');
+        const client = await getTrpcClient();
+        const endpoint = hasOperationToken()
+          ? client.goal.submitOperationReport
+          : client.goal.submitReport;
+        const result = await endpoint.mutate({
+          id,
+          operationId,
+          report: {
+            content: await readFile(options.contentFile, 'utf8'),
+            metadata: JSON.parse(await readFile(options.metadataFile, 'utf8')),
+          },
+        });
+        if (options.json) outputJson(result.data);
+        else console.log('Goal report recorded.');
+      },
+    );
+
+  goal
     .command('create <title>')
     .option(
       '--max-manager-turns <n>',
@@ -516,16 +550,30 @@ export function registerGoalCommand(program: Command) {
       },
     );
 
-  for (const action of ['pause', 'resume'] as const) {
-    goal
-      .command(`${action} <id>`)
-      .description(`${action === 'pause' ? 'Pause' : 'Resume'} goal coordination`)
-      .action(async (id: string) => {
-        const client = await getTrpcClient();
-        const result = await client.goal[action].mutate({ id });
-        log.info(result.message);
+  goal
+    .command('pause <id>')
+    .description('Pause goal coordination')
+    .action(async (id: string) => {
+      const client = await getTrpcClient();
+      const result = await client.goal.pause.mutate({ id });
+      log.info(result.message);
+    });
+
+  goal
+    .command('resume <id>')
+    .description('Resume goal coordination')
+    .option(
+      '--confirm-exit',
+      'Confirm the main Agent planning turn the goal paused on has ended, and settle it before resuming',
+    )
+    .action(async (id: string, options: { confirmExit?: boolean }) => {
+      const client = await getTrpcClient();
+      const result = await client.goal.resume.mutate({
+        id,
+        ...(options.confirmExit ? { confirmExit: true } : {}),
       });
-  }
+      log.info(result.message);
+    });
 
   goal
     .command('delete <id>')
