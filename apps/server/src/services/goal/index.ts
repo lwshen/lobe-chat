@@ -1104,6 +1104,7 @@ export class GoalService {
         graph.goal.config?.supervisorState,
       ),
       new GoalManagerService(this.db, this.userId, this.workspaceId).usage(
+        graph.goal.id,
         graph.goal.config?.managerState,
       ),
     ]);
@@ -1132,6 +1133,10 @@ export class GoalService {
    * coordinator creates from here on goes to the new agent and — unless the
    * caller opts out — the unfinished ones move with it. A goal whose Tasks go
    * to a dedicated executor keeps them there; see `setTaskAgent`.
+   *
+   * The management conversation moves with supervision: it lives in the goal
+   * agent's own history, so it is re-created for the new agent here instead of
+   * being left pointing at the previous agent's topic until the next claim.
    */
   setAgent = async (
     goalId: string,
@@ -1145,11 +1150,22 @@ export class GoalService {
     const goal = await this.goalModel.update(goalId, { agentId });
     if (!goal) throw new TRPCError({ code: 'NOT_FOUND', message: 'Goal not found' });
 
+    // The receipt carries the management topic, so the caller must get the row
+    // with the migrated one — not the copy read before the handoff.
+    const migrated = await new GoalManagerService(
+      this.db,
+      this.userId,
+      this.workspaceId,
+    ).moveConversationTo(goalId, agentId);
+
     const reassignedTaskIds =
       options?.goalOnly || goal.config?.taskAgentId
         ? []
         : await this.reassignUnfinishedTasks(goalId, agentId);
-    return { goal, reassignedTaskIds };
+    return {
+      goal: migrated ? ((await this.goalModel.findById(goalId)) ?? goal) : goal,
+      reassignedTaskIds,
+    };
   };
 
   /**
@@ -3116,6 +3132,17 @@ export class GoalService {
    * linked at their newest version, so a document refined across rounds is one
    * deliverable with a history rather than several deliverables.
    *
+   * Two rules keep one deliverable from being declared once per task:
+   *
+   * - **Created only.** A Work none of the task's runs created is someone
+   *   else's artifact this task happened to revise. A shared backlog document
+   *   that every run appends to is the case that surfaced this: without the
+   *   rule the document is declared as the output of every task in the goal.
+   * - **Claimed once per goal.** The first node to deliver a Work owns it. A
+   *   later node that revises it adds no link and no lifecycle event, so the
+   *   history reads "C1-c delivered the backlog" instead of repeating the same
+   *   deliverable under each task.
+   *
    * `task` Works are deliberately excluded: the responsible task's own Work is
    * the execution container and the caller already links it. `file` Works are
    * opt-in at the registry (conversation lists do not want every exported
@@ -3139,14 +3166,29 @@ export class GoalService {
       rootOperationIds: operationIds,
     });
 
-    const newestByWork = new Map<string, WorkVersionEventItem>();
+    const claimedWorkIds = await this.coordinatorGraph.listProducedWorkIds(goalId);
+
+    // Per Work: whether the task's runs created it, and the newest version they
+    // registered. `created` is sticky across the run's versions — a document
+    // written in round one and revised in round three is still this task's
+    // deliverable, while one that was only ever revised is not.
+    const harvestByWork = new Map<string, { created: boolean; item: WorkVersionEventItem }>();
     for (const item of Object.values(byOperation).flat()) {
       if (item.type === 'task') continue;
-      const seen = newestByWork.get(item.id);
-      if (!seen || seen.version.createdAt < item.version.createdAt) newestByWork.set(item.id, item);
+      const seen = harvestByWork.get(item.id);
+      const created = item.version.changeType === 'created';
+      if (!seen) {
+        harvestByWork.set(item.id, { created, item });
+        continue;
+      }
+      harvestByWork.set(item.id, {
+        created: seen.created || created,
+        item: seen.item.version.createdAt < item.version.createdAt ? item : seen.item,
+      });
     }
 
-    for (const item of newestByWork.values()) {
+    for (const [workId, { created, item }] of harvestByWork) {
+      if (!created || claimedWorkIds.has(workId)) continue;
       const link = await this.coordinatorGraph.attachWorkVersion(
         goalId,
         nodeId,
@@ -3211,7 +3253,18 @@ export class GoalService {
       type: 'node_status',
       detail: 'resolved',
     });
-    if (completedWork?.currentVersionId) {
+    // The container link is written once per node — at dispatch, or by
+    // `ensureTaskWorkVersion` for a node that never got one. Re-linking the
+    // completed version only appended a second identical row for the same task:
+    // the goal's task-container links were one per settle round instead of one
+    // per node, which is where half of the graph's hidden Work links came from.
+    const containerLinked = graph.workVersions.some(
+      (link) =>
+        link.nodeId === nodeId &&
+        link.relation === 'produced' &&
+        link.work?.workId === completedWork?.id,
+    );
+    if (completedWork?.currentVersionId && !containerLinked) {
       await this.coordinatorGraph.attachWorkVersion(
         graph.goal.id,
         nodeId,

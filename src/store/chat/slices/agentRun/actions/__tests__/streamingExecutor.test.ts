@@ -323,6 +323,76 @@ describe('StreamingExecutor actions', () => {
       },
     );
 
+    it('restores projected tool payloads before the first client LLM call', async () => {
+      act(() => {
+        useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
+      });
+      const { result } = renderHook(() => useChatStore());
+      const context = { agentId: TEST_IDS.SESSION_ID, topicId: TEST_IDS.TOPIC_ID };
+      const toolCall = {
+        apiName: 'search',
+        arguments: '{}',
+        id: 'call-1',
+        identifier: 'web',
+        type: 'default',
+      } as const;
+
+      // The store holds a list read while Gateway mode projected tool payloads.
+      seedDbMessages(context, [
+        { content: 'find it', id: 'user-1', role: 'user' } as UIChatMessage,
+        { content: '', id: 'assistant-1', role: 'assistant', tools: [toolCall] } as UIChatMessage,
+        {
+          content: 'view-model summary',
+          id: 'tool-1',
+          payloadOmitted: 'detail',
+          role: 'tool',
+          tool_call_id: 'call-1',
+        } as UIChatMessage,
+        { content: 'and now?', id: TEST_IDS.USER_MESSAGE_ID, role: 'user' } as UIChatMessage,
+      ]);
+      const payloadSpy = vi
+        .spyOn(messageService, 'getToolResultPayloads')
+        .mockResolvedValue({ 'tool-1': { content: 'FULL STORED TOOL BODY' } });
+      const streamSpy = spyOnClientLLMStream();
+
+      // The send path hands over FOLDED display messages: the tool result sits
+      // inside the assistant group and carries no `payloadOmitted` marker.
+      await act(async () => {
+        await result.current.executeClientAgent({
+          context,
+          messages: [
+            { content: 'find it', id: 'user-1', role: 'user' } as UIChatMessage,
+            {
+              children: [
+                {
+                  content: '',
+                  id: 'assistant-1',
+                  tools: [
+                    {
+                      ...toolCall,
+                      result: { content: 'view-model summary', id: 'tool-1' },
+                      result_msg_id: 'tool-1',
+                    },
+                  ],
+                },
+              ],
+              content: '',
+              id: 'assistant-1',
+              role: 'assistantGroup',
+            } as UIChatMessage,
+            { content: 'and now?', id: TEST_IDS.USER_MESSAGE_ID, role: 'user' } as UIChatMessage,
+          ],
+          parentMessageId: TEST_IDS.USER_MESSAGE_ID,
+          parentMessageType: 'user',
+        });
+      });
+
+      expect(payloadSpy).toHaveBeenCalledWith(['tool-1']);
+      const firstPayload = JSON.stringify(streamSpy.mock.calls[0][0].messages);
+      expect(firstPayload).toContain('FULL STORED TOOL BODY');
+      expect(firstPayload).not.toContain('view-model summary');
+    });
+
     it('writes topics.status=running at run start so off-conversation surfaces see it', async () => {
       act(() => {
         useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
@@ -1098,11 +1168,7 @@ describe('StreamingExecutor actions', () => {
 
       // Mock internal_createAgentState to include initialContext
       const mockInitialContext = {
-        pageEditor: {
-          markdown: '# Test Document',
-          xml: '<root><h1>Test</h1></root>',
-          metadata: { title: 'Test Doc', charCount: 15, lineCount: 1 },
-        },
+        selectedSkills: [{ identifier: 'user_memory', name: 'User Memory' }],
       };
 
       const originalCreateAgentState = result.current.internal_createAgentState;
@@ -1179,11 +1245,7 @@ describe('StreamingExecutor actions', () => {
       });
 
       const mockInitialContext = {
-        pageEditor: {
-          markdown: '# Preserved Context',
-          xml: '<doc>preserved</doc>',
-          metadata: { title: 'Preserved', charCount: 20, lineCount: 1 },
-        },
+        selectedTools: [{ identifier: 'lobe-notebook', name: 'Notebook' }],
       };
 
       const originalCreateAgentState = result.current.internal_createAgentState;
@@ -1217,7 +1279,7 @@ describe('StreamingExecutor actions', () => {
       streamSpy.mockRestore();
     });
 
-    it('should merge provided initialContext with runtime page editor context', () => {
+    it('should not put the page document into initialContext in page scope', () => {
       act(() => {
         useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
       });
@@ -1245,11 +1307,7 @@ describe('StreamingExecutor actions', () => {
         }),
       } as any);
       vi.spyOn(pageAgentRuntime, 'isReady').mockReturnValue(true);
-      vi.spyOn(pageAgentRuntime, 'getPageContentContext').mockReturnValue({
-        markdown: '# Test Document',
-        xml: '<root><h1>Test</h1></root>',
-        metadata: { title: 'Test Doc', charCount: 15, lineCount: 1 },
-      });
+      const pageContextSpy = vi.spyOn(pageAgentRuntime, 'getPageContentContext');
       const { operationId } = result.current.startOperation({
         context: {
           agentId: TEST_IDS.SESSION_ID,
@@ -1275,14 +1333,10 @@ describe('StreamingExecutor actions', () => {
       });
 
       expect(context.initialContext).toEqual({
-        pageEditor: {
-          markdown: '# Test Document',
-          xml: '<root><h1>Test</h1></root>',
-          metadata: { title: 'Test Doc', charCount: 15, lineCount: 1 },
-        },
         selectedSkills: [{ identifier: 'user_memory', name: 'User Memory' }],
         selectedTools: [{ identifier: 'lobe-notebook', name: 'Notebook' }],
       });
+      expect(pageContextSpy).not.toHaveBeenCalled();
     });
 
     it('should resolve desktop client tool manifests for the local execution environment', () => {
@@ -1327,55 +1381,6 @@ describe('StreamingExecutor actions', () => {
 
       expect(readFile?.description).toContain('base64');
       expect(localSystem?.systemRole).toContain('Image files are uploaded as visual tool results');
-    });
-
-    it('should not inject page editor context outside page scope', () => {
-      act(() => {
-        useChatStore.setState({ executeClientAgent: realExecAgentRuntime });
-      });
-
-      const { result } = renderHook(() => useChatStore());
-      const userMessage = {
-        id: TEST_IDS.USER_MESSAGE_ID,
-        role: 'user',
-        content: TEST_CONTENT.USER_MESSAGE,
-        sessionId: TEST_IDS.SESSION_ID,
-        topicId: TEST_IDS.TOPIC_ID,
-      } as UIChatMessage;
-
-      vi.spyOn(agentConfigResolver, 'resolveAgentConfig').mockReturnValue({
-        agentConfig: createMockAgentConfig(),
-        chatConfig: createMockChatConfig(),
-        isBuiltinAgent: false,
-        plugins: ['lobe-page-agent'],
-      });
-      vi.spyOn(toolEngineering, 'createAgentToolsEngine').mockReturnValue({
-        generateToolsDetailed: vi.fn().mockReturnValue({
-          enabledManifests: [],
-          enabledToolIds: ['lobe-page-agent'],
-          tools: [],
-        }),
-      } as any);
-      const pageContextSpy = vi.spyOn(pageAgentRuntime, 'getPageContentContext');
-      const { operationId } = result.current.startOperation({
-        context: {
-          agentId: TEST_IDS.SESSION_ID,
-          scope: 'main',
-          topicId: TEST_IDS.TOPIC_ID,
-        },
-        type: 'execAgentRuntime',
-      });
-
-      const { context } = result.current.internal_createAgentState({
-        messages: [userMessage],
-        parentMessageId: userMessage.id,
-        agentId: TEST_IDS.SESSION_ID,
-        topicId: TEST_IDS.TOPIC_ID,
-        operationId,
-      });
-
-      expect(context.initialContext?.pageEditor).toBeUndefined();
-      expect(pageContextSpy).not.toHaveBeenCalled();
     });
 
     it('should merge selectedTools into generated tools when provided', () => {

@@ -41,6 +41,7 @@ import { type ResolvedAgentConfig } from '@/services/chat/mecha';
 import { composeEnabledTools, resolveAgentConfig } from '@/services/chat/mecha';
 import { localFileService } from '@/services/electron/localFileService';
 import { messageService } from '@/services/message';
+import { hydrateProjectedConversation } from '@/services/message/hydrateProjectedTools';
 import { workService } from '@/services/work';
 import { getAgentStoreState } from '@/store/agent';
 import { agentSelectors } from '@/store/agent/selectors';
@@ -385,35 +386,7 @@ export class StreamingExecutorActionImpl {
       },
     };
 
-    // Build initialContext for page editor if lobe-page-agent is enabled
     let runtimeInitialContext: RuntimeInitialContext | undefined;
-
-    if (scope === 'page' && enabledToolIds.includes(PageAgentIdentifier)) {
-      try {
-        // Get page content context from page agent runtime
-        const pageContentContext = pageAgentRuntime.getPageContentContext('both');
-
-        runtimeInitialContext = {
-          pageEditor: {
-            markdown: pageContentContext.markdown || '',
-            xml: pageContentContext.xml || '',
-            metadata: {
-              title: pageContentContext.metadata.title,
-              charCount: pageContentContext.metadata.charCount,
-              lineCount: pageContentContext.metadata.lineCount,
-            },
-          },
-        };
-        log(
-          '[internal_createAgentState] Page Agent detected, injected initialContext.pageEditor with title: %s',
-          pageContentContext.metadata.title,
-        );
-      } catch (error) {
-        // Page agent runtime may not be initialized (e.g., editor not set)
-        // This is expected in some scenarios, so we just log and continue
-        log('[internal_createAgentState] Failed to get page content context: %o', error);
-      }
-    }
 
     const viewedTask = operation?.context.viewedTask;
     if (viewedTask) {
@@ -632,8 +605,18 @@ export class StreamingExecutorActionImpl {
       });
     }
 
-    // Create a new array to avoid modifying the original messages
-    const messages = [...originalMessages];
+    // The first step reads `state.messages` directly, before any
+    // `MessageTransport.query()` refill, and those are the folded display
+    // messages. A list cached while the read path projected tool payloads
+    // (Gateway mode on, since switched off) would hand the model empty tool
+    // bodies, so put the stored payloads back first. Ids come from the raw
+    // store list too: a folded tool result no longer carries `payloadOmitted`.
+    // Also returns a new array, so the caller's messages are never mutated.
+    const messages = await hydrateProjectedConversation(
+      [...originalMessages],
+      this.#get().dbMessagesMap[messageKey],
+      messageService.getToolResultPayloads,
+    );
 
     // Decide tool / function-calling capability from real data, not a guess.
     // The enabled-model list hydrates asynchronously (auth session → aiProvider
@@ -777,19 +760,6 @@ export class StreamingExecutorActionImpl {
         hasQueuedMessages,
         todos,
       });
-
-      // If page agent is enabled, get the latest XML for stepPageEditor
-      if (scope === 'page' && nextContext.initialContext?.pageEditor) {
-        try {
-          const pageContentContext = pageAgentRuntime.getPageContentContext('xml');
-          stepContext.stepPageEditor = {
-            xml: pageContentContext.xml || '',
-          };
-        } catch (error) {
-          // Page agent runtime may not be available, ignore errors
-          log('[executeClientAgent] Failed to get page XML for step: %o', error);
-        }
-      }
 
       // Inject stepContext into the runtime context for this step
       nextContext = { ...nextContext, stepContext };

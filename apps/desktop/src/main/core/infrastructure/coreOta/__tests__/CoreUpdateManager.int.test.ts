@@ -27,7 +27,8 @@ const PUBLIC_KEY_PEM = publicKey.export({ format: 'pem', type: 'spki' }).toStrin
 const ABI = 'a'.repeat(64);
 const SERVER = 'https://updates.test';
 const OBJECTS = 'https://cdn.test/cas';
-const PLATFORM = process.platform as CoreManifest['platform'];
+const ORIGINAL_PLATFORM = process.platform;
+const PLATFORM = 'linux' as CoreManifest['platform'];
 
 const BASE_FILES: Record<string, string> = {
   'dist/main/index.js': 'main-v1',
@@ -197,11 +198,12 @@ const expectAppliedRenderer = (app: ReturnType<typeof makeApp>, indexContent: st
   expect(readFileSync(renderer!.resolve('assets/popup.js')!, 'utf8')).toBe('popup');
 };
 
-const flushGc = () => new Promise((resolve) => setTimeout(resolve, 20));
+const flushGc = (manager: unknown) => (manager as { gcTask: Promise<void> }).gcTask;
 
 let builtinManifest: CoreManifest;
 
 beforeEach(() => {
+  Object.defineProperty(process, 'platform', { value: 'linux' });
   vi.clearAllMocks();
   served = new Map();
   userDataDir = mkdtempSync(path.join(tmpdir(), 'core-ota-user-'));
@@ -212,6 +214,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  Object.defineProperty(process, 'platform', { value: ORIGINAL_PLATFORM });
   rmSync(userDataDir, { force: true, recursive: true });
   rmSync(builtinDir, { force: true, recursive: true });
 });
@@ -226,6 +229,33 @@ const mainChanged = (version: string, seq: number) =>
   buildManifest(version, seq, { ...BASE_FILES, 'dist/main/index.js': `main-${version}` });
 
 describe('CoreUpdateManager initialize', () => {
+  it('disables manual and scheduled OTA on macOS Stable', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    const { manager } = await loadManager();
+    manager.startScheduledChecks();
+    await manager.checkForUpdates({ manual: true });
+    expect(manager.enabled).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('enables Canary OTA after leaving macOS Stable and clears it when switching back', async () => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    const { manager } = await loadManager();
+    manager.startScheduledChecks();
+    manager.switchChannel('canary');
+    expect(manager.enabled).toBe(true);
+    manager.switchChannel('stable');
+    expect(manager.enabled).toBe(false);
+    expect(readPointer(otaRoot(), ABI)).toMatchObject({
+      current: null,
+      previous: null,
+      staged: null,
+      channel: 'stable',
+    });
+    await manager.checkForUpdates({ manual: true });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('checks for updates in the background immediately after startup and hourly thereafter', async () => {
     vi.useFakeTimers();
     try {
@@ -269,7 +299,7 @@ describe('CoreUpdateManager initialize', () => {
     });
 
     const { manager } = await loadManager();
-    await flushGc();
+    await flushGc(manager);
 
     expect(manager.getStatus().current).toBeNull();
     expect(readPointer(otaRoot(), ABI)).toMatchObject({ blacklist: [], current: null });
@@ -298,13 +328,15 @@ describe('CoreUpdateManager initialize', () => {
     }
     writeFileSync(path.join(userDataDir, 'app-data.json'), 'keep app data');
 
-    await loadManager();
-    await flushGc();
+    const { manager } = await loadManager();
+    await flushGc(manager);
 
     expect(existsSync(path.join(storeDir(), 'f'.repeat(64)))).toBe(false);
     expect(readdirSync(path.join(otaRoot(), 'cores'))).toEqual([]);
-    for (const dir of ['core-ota/staging', 'renderer-ota', 'renderer-ota-v2'])
-      expect(existsSync(path.join(userDataDir, dir))).toBe(false);
+    await vi.waitFor(() => {
+      for (const dir of ['core-ota/staging', 'renderer-ota', 'renderer-ota-v2'])
+        expect(existsSync(path.join(userDataDir, dir))).toBe(false);
+    });
     expect(readPointer(otaRoot(), ABI)).toMatchObject({
       current: null,
       previous: null,
@@ -620,7 +652,7 @@ describe('CoreUpdateManager checkForUpdates', () => {
     await manager.checkForUpdates();
     manager.applyStagedNow();
     manager.handleBootPing('mounted');
-    await flushGc();
+    await flushGc(manager);
     const reused = 'index-1.0.1';
     serveLatest(
       buildManifest('1.0.5', 5, {
@@ -753,11 +785,11 @@ describe('CoreUpdateManager checkForUpdates', () => {
       makeApp(),
       makeShell({ coreDir: coreDir('1.0.1'), manifest: v1, source: 'external' }),
     );
-    await flushGc();
+    await flushGc(manager);
     expect(readdirSync(path.join(otaRoot(), 'cores')).sort()).toEqual(['0.9.5', '1.0.1']);
 
     await manager.checkForUpdates();
-    await flushGc();
+    await flushGc(manager);
 
     expect(manager.getStatus()).toMatchObject({ applyMode: 'reload', staged: '1.0.2' });
     expect(readPointer(otaRoot(), ABI)).toMatchObject({
@@ -826,7 +858,7 @@ describe('CoreUpdateManager checkForUpdates', () => {
     expect(readPointer(otaRoot(), ABI).current).toBe('1.0.1');
 
     manager.switchChannel('canary');
-    await flushGc();
+    await flushGc(manager);
 
     expect(readPointer(otaRoot(), ABI)).toMatchObject({ current: null, previous: null });
     expect(existsSync(coreDir('1.0.1'))).toBe(false);
@@ -920,7 +952,7 @@ describe('CoreUpdateManager checkForUpdates', () => {
     expect(manager.getStatus().staged).toBe('1.0.1');
 
     manager.switchChannel('canary');
-    await flushGc();
+    await flushGc(manager);
 
     expect(manager.getStatus().staged).toBeNull();
     expect(readPointer(otaRoot(), ABI).staged).toBeNull();
