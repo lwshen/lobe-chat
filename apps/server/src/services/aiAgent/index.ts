@@ -1,5 +1,6 @@
 import type { AgentState } from '@lobechat/agent-runtime';
 import { BUILTIN_AGENT_SLUGS } from '@lobechat/builtin-agents';
+import type { SandboxStorageClaim } from '@lobechat/builtin-tool-cloud-sandbox';
 import type { LobeChatDatabase } from '@lobechat/database';
 import type {
   ExecAgentResult,
@@ -218,8 +219,11 @@ export class AiAgentService {
     };
   }
 
-  private async getMarketService(runFacts?: RunFacts): Promise<MarketService> {
-    if (this._marketService) return this._marketService;
+  private async getMarketService(
+    runFacts?: RunFacts,
+    options?: { sandboxStorage: SandboxStorageClaim },
+  ): Promise<MarketService> {
+    if (!options && this._marketService) return this._marketService;
 
     // The turn's fact reader already holds this row when a run is underway
     // (`execAgent` asks it for the memory / timezone settings too); callers
@@ -229,6 +233,21 @@ export class AiAgentService {
       runFacts ? runFacts.userSettings() : new UserModel(this.db, this.userId).getUserSettings()
     ).catch(() => undefined);
     const accessToken = (settings?.market as any)?.accessToken;
+
+    // A sandbox-workspace claim is signed into the trust token, so a service
+    // carrying one is built for that run and kept out of the shared cache.
+    if (options) {
+      return new MarketService({
+        accessToken,
+        userInfo: {
+          sandboxStorage: options.sandboxStorage,
+          userId: this.userId,
+          // The claim resolves against the workspace's mirrored organization,
+          // not the member's personal account, so the scope has to travel with it.
+          workspaceId: this.workspaceId,
+        },
+      });
+    }
 
     this._marketService = new MarketService({
       accessToken,
@@ -340,6 +359,18 @@ export class AiAgentService {
    */
   executeStep(params: AgentExecutionParams): Promise<AgentExecutionResult> {
     return this.agentRuntimeService.executeStep(params);
+  }
+
+  /** Continue a run parked in `waiting_for_client` (see AgentRuntimeService). */
+  resumeFromClientLlmWait(
+    params: Parameters<AgentRuntimeService['resumeFromClientLlmWait']>[0],
+  ): ReturnType<AgentRuntimeService['resumeFromClientLlmWait']> {
+    return this.agentRuntimeService.resumeFromClientLlmWait(params);
+  }
+
+  /** Runs of this user parked in `waiting_for_client`. */
+  listClientLlmWaits(providers?: string[]): ReturnType<AgentRuntimeService['listClientLlmWaits']> {
+    return this.agentRuntimeService.listClientLlmWaits(providers);
   }
 
   /** Mint a lock owner that spans a whole inline step loop. */
@@ -1279,7 +1310,7 @@ export class AiAgentService {
         {
           bindTopicWorkingDirectory: (p) => this.bindTopicWorkingDirectory(p),
           db: this.db,
-          getMarketService: () => this.getMarketService(runFacts),
+          getMarketService: (options) => this.getMarketService(runFacts, options),
           messageModel: this.messageModel,
           resolveDeviceWorkspaceId: (deviceId) => this.resolveDeviceWorkspaceId(deviceId),
           topicModel: this.topicModel,

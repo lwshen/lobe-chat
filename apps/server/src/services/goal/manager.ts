@@ -4,6 +4,7 @@ import { GOAL_ACCEPTANCE_TASK_TITLE } from '@lobechat/const/goal';
 import { buildGoalManagerPrompt } from '@lobechat/prompts';
 import type {
   GoalGraphSnapshot,
+  GoalItem,
   GoalManagerState,
   GoalTickResult,
   TaskItem,
@@ -25,6 +26,7 @@ import type { LobeChatDatabase } from '@/database/type';
 import { AiAgentService } from '@/server/services/aiAgent';
 import { TopicStartReservationError } from '@/server/services/aiAgent/topicStartReservation';
 
+import { TERMINAL_GOAL_STATUSES as finishedGoalStatuses } from './goalTraceRecorder';
 import { countDeviceOfflineRuns, DEFAULT_MANAGER_MAX_TURNS } from './recoveryPolicy';
 import { scheduleGoalAdvance } from './scheduler';
 import { recoveryEligibility } from './supervisor/policy';
@@ -74,6 +76,8 @@ const activeStatuses = new Set(['planning', 'running']);
 const terminalOperations = new Set(['done', 'error', 'interrupted']);
 const terminalNodes = new Set(['resolved', 'retired', 'rejected']);
 const TIMEOUT_MS = 20 * 60_000;
+/** Task comments listed in one planning turn's message; older ones are counted, not shown. */
+const FEEDBACK_NOTE_LIMIT = 20;
 /** Source message id prefix of a dispatched planning turn; the suffix is its token. */
 const MANAGER_SOURCE_MESSAGE_PREFIX = 'msg_goal_manager_';
 
@@ -293,6 +297,160 @@ export class GoalManagerService {
       return next;
     });
 
+  /**
+   * Attach an existing goal to a topic so it ends up in the state
+   * `/goal` in that topic would have left it: the topic's agent is
+   * the goal agent, the topic is the goal's `topic` subject, the goal
+   * has a main Agent policy, and its management topic
+   * (`managerState.topicId`) is this topic, so later planning turns land
+   * there.
+   *
+   * The graph, Tasks, budgets and status are left alone. The binding run is
+   * adopted as a planning turn only when the goal is where a freshly created
+   * topic goal would be — no turn in flight and no unfinished Task to
+   * preempt — because an adopted turn holds task coordination until it settles.
+   * Otherwise the next turn the coordinator starts is dispatched here.
+   *
+   * Refused while a planning turn is in flight elsewhere: `settleInFlight`
+   * finds that turn's run through `state.topicId`, so moving it would strand
+   * the turn and pause the goal.
+   */
+  bindTopic = async (
+    goalId: string,
+    run: { agentId: string; operationId: string; topicId: string },
+    options?: { force?: boolean },
+  ): Promise<{
+    goal: GoalItem;
+    previousAgentId: string | null;
+    previousSubject: { id: string | null; type: GoalItem['subjectType'] };
+    turnToken?: string;
+  }> =>
+    this.db.transaction(async (db) => {
+      const model = new GoalModel(db, this.userId, this.workspaceId);
+      const goal = await model.lockById(goalId);
+      if (!goal) throw new TRPCError({ code: 'NOT_FOUND', message: 'Goal not found' });
+      if (finishedGoalStatuses.has(goal.status))
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: `Goal is ${goal.status}; a finished goal cannot be bound to a topic`,
+        });
+
+      const previousSubject = { id: goal.subjectId, type: goal.subjectType };
+      const alreadyBound = goal.subjectType === 'topic' && goal.subjectId === run.topicId;
+      if (!alreadyBound && goal.subjectId && !options?.force)
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: `Goal is already bound to ${goal.subjectType} ${goal.subjectId}; pass force to move it to this topic`,
+        });
+
+      const state = goal.config?.managerState;
+      if (
+        state &&
+        !state.consumed &&
+        (state.topicId !== run.topicId || goal.agentId !== run.agentId)
+      )
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message: `A planning turn of this goal is in flight in ${state.topicId}; wait for it to settle (or confirm its exit with lh goal resume ${goalId} --confirm-exit) before binding`,
+        });
+
+      // Same default as `createFromConversation`: a topic goal always
+      // has a main Agent; an existing policy (turn cap, instruction) is kept.
+      await db
+        .update(goals)
+        .set({
+          agentId: run.agentId,
+          config: sql`COALESCE(${goals.config}, '{}'::jsonb) || jsonb_build_object('manager', COALESCE(${goals.config}->'manager', '{}'::jsonb))`,
+          subjectId: run.topicId,
+          subjectType: 'topic',
+          updatedAt: new Date(),
+        })
+        .where(eq(goals.id, goalId));
+
+      let turnToken: string | undefined;
+      // An in-flight turn reaching here is already this topic's.
+      if (!state || state.consumed) {
+        const graph = await this.graph(db).getGraph(goalId);
+        if (!graph) throw new TRPCError({ code: 'NOT_FOUND', message: 'Goal not found' });
+        const previousTopicIds = [
+          ...new Set([
+            ...(state?.previousTopicIds ?? []),
+            ...(state?.topicId && state.topicId !== run.topicId ? [state.topicId] : []),
+          ]),
+        ];
+        const maxTurns = graph.goal.config?.manager?.maxTurns ?? DEFAULT_MANAGER_MAX_TURNS;
+        const quiet =
+          activeStatuses.has(goal.status) &&
+          !state?.readyForAcceptance &&
+          (state?.turns ?? 0) < maxTurns &&
+          !graph.decisions.some((d) => d.status === 'pending') &&
+          !graph.nodes.some((n) => n.kind === 'task' && !terminalNodes.has(n.status)) &&
+          !(await this.budgetBlocked(graph, db));
+        let next: GoalManagerState;
+        if (quiet) {
+          // What `adoptConversationTurn` records for a goal created here.
+          next = {
+            adopted: true,
+            adoptedOperationId: run.operationId,
+            operationId: run.operationId,
+            ...(previousTopicIds.length > 0 && { previousTopicIds }),
+            reviewSnapshot: (await this.reviews(graph, db)).hash,
+            snapshot: managerSnapshot(graph),
+            startedAt: new Date().toISOString(),
+            token: randomUUID(),
+            topicId: run.topicId,
+            turns: (state?.turns ?? 0) + 1,
+          };
+          turnToken = next.token;
+        } else {
+          // No turn now: re-point the settled receipt (or record a settled
+          // one with no turn spent) so the next turn the coordinator starts is
+          // dispatched into this topic instead of a new topic.
+          next = state
+            ? {
+                ...state,
+                ...(previousTopicIds.length > 0 && { previousTopicIds }),
+                topicId: run.topicId,
+              }
+            : {
+                consumed: true,
+                snapshot: managerSnapshot(graph),
+                startedAt: new Date().toISOString(),
+                token: managerTurnToken(goalId),
+                topicId: run.topicId,
+                turns: 0,
+              };
+        }
+        await this.save(db, goalId, next);
+        if (quiet && goal.status === 'planning') await model.updateStatus(goalId, 'running');
+      }
+
+      if (!alreadyBound || goal.agentId !== run.agentId) {
+        const moved =
+          previousSubject.id && !alreadyBound
+            ? ` (moved from ${previousSubject.type} ${previousSubject.id})`
+            : '';
+        const agentChange =
+          goal.agentId !== run.agentId
+            ? `; goal agent ${goal.agentId ?? 'none'} → ${run.agentId}`
+            : '';
+        await new GoalGraphModel(db, this.userId, this.workspaceId, {
+          id: run.agentId,
+          type: 'agent',
+        }).recordGoalUpdate(goalId, {
+          operationId: run.operationId,
+          reason: `bound to topic ${run.topicId}${moved}${agentChange}`,
+        });
+      }
+
+      return {
+        goal: (await model.findById(goalId))!,
+        previousAgentId: goal.agentId,
+        previousSubject,
+        turnToken,
+      };
+    });
+
   private save = async (db: LobeChatDatabase, id: string, state: GoalManagerState) => {
     // Caller holds the owned Goal row lock. Do not overwrite concurrent policy namespaces.
     await db
@@ -309,6 +467,10 @@ export class GoalManagerService {
   private reviews = async (graph: GoalGraphSnapshot, db = this.db) => {
     const tasks = new TaskModel(db, this.userId, this.workspaceId);
     const visible = await tasks.findByIds(graph.nodes.flatMap((n) => (n.taskId ? [n.taskId] : [])));
+    // The node title names the task the way the goal page does, for the person
+    // reading the card; kept out of the hash, so a rename does not invalidate a
+    // turn's feedback snapshot.
+    const titles = new Map(graph.nodes.flatMap((n) => (n.taskId ? [[n.taskId, n.title]] : [])));
     const comments = (
       await Promise.all(
         visible.map(async (task) =>
@@ -327,12 +489,15 @@ export class GoalManagerService {
       .sort((a, b) => a.id.localeCompare(b.id));
     return {
       hash: createHash('sha256').update(JSON.stringify(comments)).digest('hex'),
-      notes: JSON.stringify(
-        [...comments]
-          .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
-          .slice(-20)
-          .map((c) => ({ ...c, content: c.content.slice(0, 2000) })),
-      ),
+      notes: [...comments]
+        .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
+        .map((c) => ({
+          author: c.authorAgentId ? `agent ${c.authorAgentId}` : 'user',
+          content: c.content,
+          taskId: c.taskId,
+          taskTitle: titles.get(c.taskId) ?? undefined,
+          updatedAt: c.updatedAt,
+        })),
     };
   };
 
@@ -692,6 +857,10 @@ export class GoalManagerService {
           ...(freshState?.topicId && freshState.topicId !== topicId ? [freshState.topicId] : []),
         ]),
       ];
+      // The cutoff the next turn splits new from earlier feedback at. Taken before
+      // the comments are read, so a comment committed while they load is never
+      // dated before a turn that did not see it; at worst it is shown as new twice.
+      const startedAt = new Date().toISOString();
       const reviews = await this.reviews(current, db);
       const next: GoalManagerState = {
         ...(problem
@@ -707,11 +876,36 @@ export class GoalManagerService {
         turns: (state?.turns ?? 0) + 1,
         token: managerTurnToken(goal.id),
         snapshot: managerSnapshot(current),
-        startedAt: new Date().toISOString(),
+        startedAt,
       };
       await this.save(db, goal.id, next);
       if (fresh.status === 'planning') await model.updateStatus(goal.id, 'running');
-      return { ...next, reviewNotes: reviews.notes };
+      // Split at the previous turn's start, so the message names what is new to
+      // this turn instead of resending the same comments every turn.
+      // Only the latest FEEDBACK_NOTE_LIMIT are listed; the rest are counted so
+      // the agent knows to read them in full rather than treating the list as all.
+      const since = freshState?.startedAt ? Date.parse(freshState.startedAt) : undefined;
+      const isNew = (n: (typeof reviews.notes)[number]) =>
+        since === undefined || n.updatedAt.getTime() > since;
+      const listed = reviews.notes.slice(-FEEDBACK_NOTE_LIMIT);
+      const omitted = reviews.notes.slice(0, -FEEDBACK_NOTE_LIMIT);
+      const note = ({ updatedAt, ...rest }: (typeof reviews.notes)[number]) => ({
+        ...rest,
+        updatedAt: updatedAt.toISOString(),
+      });
+      return {
+        ...next,
+        earlierFeedback: listed.filter((n) => !isNew(n)).map(note),
+        newFeedback: listed.filter(isNew).map(note),
+        omittedFeedback: {
+          earlier: omitted.filter((n) => !isNew(n)).length,
+          new: omitted.filter(isNew).length,
+        },
+        previousTurn: freshState && {
+          neverStarted: freshState.dispatchNeverStarted,
+          plan: freshState.submitted,
+        },
+      };
     });
     if (!claimed) return this.wait(goal.id, 'Another advance owns the planning turn');
     try {
@@ -729,7 +923,12 @@ export class GoalManagerService {
           requirement: goal.requirement ?? goal.title,
           instruction: policy.instruction,
           token: claimed.token,
-          feedback: claimed.reviewNotes,
+          turn: claimed.turns,
+          maxTurns: policy.maxTurns ?? DEFAULT_MANAGER_MAX_TURNS,
+          previousTurn: claimed.previousTurn,
+          newFeedback: claimed.newFeedback,
+          omittedFeedback: claimed.omittedFeedback,
+          earlierFeedback: claimed.earlierFeedback,
           problem: problem?.reason,
           continuation:
             continuation ??

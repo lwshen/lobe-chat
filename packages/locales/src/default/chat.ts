@@ -619,6 +619,8 @@ export default {
   'heteroAgent.cliModel.defaultDesc': 'Use the default model configured in {{name}}',
   'heteroAgent.cliModel.empty': '{{name}} did not report any models.',
   'heteroAgent.cliModel.error': 'Could not load models from the CLI.',
+  'heteroAgent.cliModel.unsupportedConfiguration':
+    'Model discovery is unavailable for this CLI configuration. You can still use the current model.',
   'heteroAgent.cliModel.loading': 'Loading {{name}} models…',
   'heteroAgent.cliModel.noMatch': 'No models match your search.',
   'heteroAgent.cliModel.reload': 'Reload models',
@@ -721,7 +723,7 @@ export default {
     'Could not reconnect this device. Make sure the desktop app is running, then try again.',
   'heteroAgent.executionTarget.personalGroup': 'Private Devices',
   'heteroAgent.executionTarget.sandbox': 'Cloud Sandbox',
-  'heteroAgent.executionTarget.sandboxDesc': 'Run in an ephemeral cloud sandbox',
+  'heteroAgent.executionTarget.sandboxDesc': 'Runs in the cloud, no machine needed',
   'heteroAgent.executionTarget.workspaceGroup': 'Workspace Devices',
   'heteroAgent.executionTarget.downloadDesktop': 'Get Desktop App',
   'heteroAgent.executionTarget.downloadDesktopDesc': 'Run agents with access to your computer',
@@ -854,6 +856,15 @@ export default {
   'messageAction.regenerate': 'Regenerate',
   'messageAction.select': 'Select',
   'messageLink.openInSideBrowser': 'Open in side browser',
+  'clientLlmWait.title': 'Waiting for a LobeHub client to run {{provider}}',
+  'clientLlmWait.descHere':
+    'This run needs {{provider}}, which only your own device can reach. Continue it on this device, or it stops waiting at {{time}}.',
+  'clientLlmWait.descElsewhere':
+    'This run needs {{provider}}, which only your own device can reach. Open LobeHub on the device running {{provider}} and the run continues on its own. It stops waiting at {{time}}.',
+  'clientLlmWait.continue': 'Continue on this device',
+  'clientLlmWait.notWaiting':
+    'This run is no longer waiting. It may have been picked up by another device, stopped, or timed out.',
+  'clientLlmWait.continueFailed': 'Could not continue the run on this device. Try again.',
   'heteroRateLimit.cancelFailed':
     'Could not cancel the scheduled continuation. It may already be claimed or running. Refresh the conversation to check its status.',
   'messageForward.bar.cancel': 'Cancel',
@@ -1353,6 +1364,52 @@ export default {
   'gatewayMode.cardTitle': 'Agent Gateway Mode',
   'gatewayMode.desc':
     "Run agents in the cloud through LobeHub's Agent Gateway. Tasks keep running even after you close the page.",
+  'sandboxStorage.ephemeral': 'Temporary working directory',
+  'sandboxStorage.ephemeralDesc': 'Cleaned up when the sandbox is recycled',
+  'sandboxStorage.persistentUpsell': 'Persistent working directory',
+  'sandboxStorage.persistentUpsellDesc': 'Keep files across runs and topics',
+  'sandboxStorage.setUpEnvironmentDesc': 'A persistent directory lives in an environment',
+  'sandboxStorage.setUpEnvironment': 'Set up an environment',
+  // The other empty state: environments exist, none has been materialized
+  // into a working copy yet. Naming the environment page rather than opening
+  // a dialog here — this menu picks between instances, it does not make them.
+  'sandboxStorage.noInstances': 'Create an instance',
+  'sandboxStorage.noInstancesDesc': 'Your environments have no working copy yet',
+  'sandboxStorage.manage': 'Manage',
+  // The menu names the thing it picks — an instance of an environment —
+  // rather than the slot it fills. The explainer carries the distinction,
+  // because "environment" and "instance of one" is the whole model.
+  'sandboxStorage.pickerTitle': 'Environment Instance',
+  'sandboxStorage.pickerInfoTooltip':
+    'An environment describes what a run needs around it — repositories, setup, variables. An instance is one working copy of it, with its own folder and its own installed packages; conversations run inside an instance and keep what they leave there.',
+  'sandboxStorage.environmentsUnavailable': 'Environments could not be loaded',
+  // One conversation at a time per instance: the execution plane takes a
+  // lease and answers the second writer with 409 INSTANCE_IN_USE, because
+  // two runs snapshotting one folder means whichever ends last silently
+  // discards the other's work. The tag says which rows that applies to before
+  // the first message meets the refusal.
+  'sandboxStorage.running': 'Running',
+  // A build holds the same single-writer lease a run does, so it is refused
+  // for the same reason — but it is not a conversation, and saying "running"
+  // would send someone looking for one.
+  'sandboxStorage.building': 'Building',
+  'sandboxStorage.buildFailed': 'Not built',
+  'sandboxStorage.instanceBusy':
+    '{{name}} is running in another conversation. This one keeps it, and picks it up when that run ends.',
+  // Pool captions inside a workspace, in the execution-target menu's words:
+  // which pool an environment is in decides who else can reach what a run
+  // leaves behind. A personal account has one pool and needs neither.
+  'sandboxStorage.privateGroup': 'Private Environments',
+  'sandboxStorage.workspaceGroup': 'Workspace Environments',
+  // Says where the hidden ones went. Dropped from the list rather than
+  // dimmed, the way the execution-target menu drops a workspace agent's
+  // personal devices, so this is the only place they are accounted for.
+  'sandboxStorage.publicAgentHint_one':
+    '{{count}} private environment is hidden — a public agent can only use workspace environments. Publish it to use it here.',
+  'sandboxStorage.publicAgentHint_other':
+    '{{count}} private environments are hidden — a public agent can only use workspace environments. Publish one to use it here.',
+  'sandboxStorage.privateInstanceBlocked':
+    '“{{name}}” is in a private environment, which a public agent cannot use. This topic runs in a temporary working directory instead.',
   'search.grounding.imageSearchQueries': 'Image Search Keywords',
   'search.grounding.imageTitle': 'Found {{count}} images',
   'chatMode.agent': 'Agent',
@@ -1970,8 +2027,6 @@ export default {
   'goalList.status.verifying': 'Verifying',
   'goalList.status.waiting': 'Waiting',
   'goalTask.checks': '{{passed}}/{{total}} checks passed',
-  'goalTask.currentStep': 'Current: {{title}}',
-  'goalTask.nextStep': 'Up next: {{title}}',
   'goalTask.round': 'Round {{current}}',
   'goalTask.roundWithBudget': 'Round {{current}}/{{total}}',
   'goalTask.tasksDone': '{{passed}}/{{total}} tasks done',
@@ -1979,11 +2034,18 @@ export default {
   'goalTask.status.canceled': 'Canceled',
   'goalTask.status.error': 'Needs attention',
   'goalTask.status.paused': 'Paused',
+  'goalTask.status.planning': 'Planning',
   'goalTask.status.repairing': 'Repairing',
   'goalTask.status.review': 'Pending acceptance',
   'goalTask.status.running': 'Executing',
   'goalTask.status.verifying': 'Verifying',
   'goalTask.status.waiting': 'Waiting',
+  'goalTask.plan.drafting': 'Breaking the goal into tasks…',
+  'goalTask.stage.achieved': 'Achieve',
+  'goalTask.stage.executing': 'Execute',
+  'goalTask.stage.planning': 'Plan',
+  'goalTask.stage.verifying': 'Accept',
+  'goalTask.step.queued': 'Not started',
   'goalList.title': 'Goals',
   'goalDetail.acceptance': 'Acceptance checks',
   'goalAcceptance.add': 'Add criterion',
@@ -2460,6 +2522,24 @@ export default {
   'goalPage.title': 'Overview',
   'goalPage.view.card': 'Cards',
   'goalPage.view.list': 'List',
+  'goalTurn.authorUser': 'User',
+  'goalTurn.continuation': 'Why planning reopened',
+  'goalTurn.earlierFeedback': 'Earlier feedback ({{count}})',
+  'goalTurn.instruction': 'Instructions for the planning agent',
+  'goalTurn.newFeedback': 'New feedback ({{count}})',
+  'goalTurn.omitted': '{{count}} more comments not shown',
+  'goalTurn.outcome.never_started': 'Previous turn never started',
+  'goalTurn.outcome.no_plan': 'Previous turn exited without a plan',
+  'goalTurn.outcome.submitted': 'Previous turn submitted {{action}}',
+  'goalTurn.problem': 'Problem handed over',
+  'goalTurn.requirement': 'Goal requirement',
+  'goalTurn.showAll': 'Show all',
+  'goalTurn.showLess': 'Show less',
+  'goalTurn.title': 'Goal planning · Turn {{turn}}/{{max}}',
+  'goalTurn.trigger.continuation': 'Replanning',
+  'goalTurn.trigger.first': 'First turn',
+  'goalTurn.trigger.settled': 'Work settled',
+  'goalTurn.trigger.takeover': 'Takeover',
   'taskList.activeTasks': 'Active Tasks',
   'taskList.all': 'All tasks',
   'taskList.visibility.all': 'All',
@@ -3198,6 +3278,8 @@ export default {
   'workingPanel.skills.section.project': 'Project skills',
   'workingPanel.skills.section.user': 'User skills',
   'workingPanel.skills.title': 'Skills',
+  'workingPanel.files.openNeedsTopic':
+    'Send a message first — this environment’s files open once the conversation has a session.',
   'workingPanel.files.copyAbsolutePath': 'Copy Path',
   'workingPanel.files.copyRelativePath': 'Copy Relative Path',
   'workingPanel.files.actions.copy': 'Copy',
@@ -3252,6 +3334,8 @@ export default {
   'workingPanel.files.validation.whitespace': "Names can't start or end with a space",
   'workingPanel.files.collapseAll': 'Collapse Folders in Explorer',
   'workingPanel.files.empty': 'No files in this workspace',
+  'workingPanel.files.unreadable':
+    "Couldn't read this workspace — it may not exist yet, or the listing failed",
   'workingPanel.files.filters.changedOnly': 'Show Git Changes Only',
   'workingPanel.files.filters.hideIgnored': 'Exclude Ignored Files',
   'workingPanel.files.filters.title': 'Filter Files',
