@@ -186,7 +186,7 @@ export default {
     'You are about to delete this category. After deletion, its agents will be moved to the default list. Please confirm your action.',
   'confirmRemoveGroupSuccess': 'Group deleted successfully',
   'confirmRemoveSessionItemAlert':
-    'You are about to delete this agent. Once deleted, it cannot be retrieved. Please confirm your action.',
+    'You are about to delete this agent and its conversations. They will be moved to the trash and can be restored within 30 days.',
   'confirmRemoveSessionSuccess': 'Agent removed successfully',
   'defaultAgent': 'Default Agent',
   'defaultGroupChat': 'Group',
@@ -862,7 +862,7 @@ export default {
   'messageForward.bar.selectToHere': 'Select to here',
   'messageForward.bar.selected': 'Selected {{count}}',
   'messageForward.deleteConfirm.desc':
-    'Delete the selected {{count}} messages? This cannot be undone.',
+    'Delete the selected {{count}} messages? They move to the trash and can be restored within 30 days.',
   'messageForward.deleteConfirm.success': 'Deleted {{count}} messages',
   'messageForward.deleteConfirm.title': 'Delete messages',
   'messageForward.empty': 'Select at least one message to forward',
@@ -1746,6 +1746,7 @@ export default {
   'taskDetail.cancelSchedule': 'Cancel schedule',
   'taskDetail.nextRunCountdown': 'Next run in {{countdown}}',
   'taskDetail.nextRunCountdownDays': 'Next run in {{days}}d {{hours}}h',
+  'taskDetail.partOfGoal': 'Part of goal',
   'taskDetail.pauseTask': 'Pause task',
   'taskDetail.rerunTask': 'Re-run task',
   'taskDetail.runNow': 'Run now',
@@ -2238,9 +2239,11 @@ export default {
     'Check which criteria were not met below, then retry or end the Goal.',
   'goalProcess.result.gate.revising':
     'You chose to retry. The Agent is revising the result; it will be accepted again when done.',
+  'goalProcess.result.headline.pending': 'Organizing this result…',
   'goalProcess.result.nav.document': 'Final document',
   'goalProcess.result.nav.label': 'Jump to section',
   'goalProcess.result.nav.overview': 'Overview',
+  'goalProcess.result.requirement': 'Original requirement',
   'goalProcess.result.scale.cost': 'Spent {{cost}}',
   'goalProcess.result.scale.criteria': '{{met}}/{{total}} criteria met',
   'goalProcess.result.scale.duration': 'Took {{duration}}',

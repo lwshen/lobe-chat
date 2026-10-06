@@ -1,13 +1,14 @@
 import {
+  canApplyAsReviewDiff,
   describeLiteXMLEditStep,
   findLiteXMLEditStepProblem,
+  findMalformedLiteXML,
   indexLiteXMLDocument,
   normalizeLiteXMLFragment,
   planLiteXMLEditSteps,
-  touchesList,
 } from '@lobechat/editor-runtime';
-import type { HeadlessLiteXMLOperation } from '@lobehub/editor/headless';
-import { createHeadlessEditor } from '@lobehub/editor/headless';
+import type { HeadlessEditorOptions, HeadlessLiteXMLOperation } from '@lobehub/editor/headless';
+import { createHeadlessEditor, DEFAULT_HEADLESS_EDITOR_PLUGINS } from '@lobehub/editor/headless';
 import type { SerializedEditorState, SerializedLexicalNode } from 'lexical';
 
 import { EMPTY_EDITOR_STATE } from '@/libs/editor/constants';
@@ -97,6 +98,22 @@ interface LoadEditorStateParams {
 // hydrating snapshots with stable ids. Concurrent document reads can therefore
 // corrupt one another (or observe a partially initialized HeadlessEditor). Keep
 // the complete create/hydrate/export/destroy lifecycle serialized.
+// Documents render in PageEditor, which keeps `$...$` as plain text because
+// business writing uses dollar amounts far more than inline formulas. Parse
+// Markdown the same way here so CLI and agent writes don't mint inline math
+// nodes the editor itself would never create. Block `$$` math is unaffected.
+type HeadlessEditorPlugin = NonNullable<HeadlessEditorOptions['plugins']>[number];
+
+const DOCUMENT_HEADLESS_PLUGINS = DEFAULT_HEADLESS_EDITOR_PLUGINS.map(
+  (plugin): HeadlessEditorPlugin =>
+    !Array.isArray(plugin) && plugin.pluginName === 'MathPlugin'
+      ? [plugin, { enableInlineMath: false }]
+      : plugin,
+);
+
+export const createDocumentHeadlessEditor = () =>
+  createHeadlessEditor({ plugins: DOCUMENT_HEADLESS_PLUGINS });
+
 let headlessEditorTail: Promise<void> = Promise.resolve();
 
 const withHeadlessEditorLock = async <T>(run: () => Promise<T> | T): Promise<T> => {
@@ -187,7 +204,7 @@ export const createMarkdownEditorSnapshot = async (
   content: string,
 ): Promise<AgentDocumentEditorSnapshot> =>
   withHeadlessEditorLock(() => {
-    const editor = createHeadlessEditor();
+    const editor = createDocumentHeadlessEditor();
 
     try {
       hydrateMarkdownOrEmptyState(editor, content);
@@ -228,7 +245,10 @@ export const exportEditorDataSnapshot = async (
   params: LoadEditorStateParams & { litexml?: boolean },
 ): Promise<AgentDocumentEditorSnapshot> =>
   withHeadlessEditorLock(() => {
-    const { editor, recoveredFromMarkdown } = createEditorWithState(createHeadlessEditor, params);
+    const { editor, recoveredFromMarkdown } = createEditorWithState(
+      createDocumentHeadlessEditor,
+      params,
+    );
 
     try {
       const snapshot = exportSnapshot(editor, params.litexml);
@@ -247,7 +267,10 @@ export const applyLiteXMLOperations = async ({
   operations: AgentDocumentLiteXMLOperation[];
 }): Promise<AgentDocumentEditSnapshot> =>
   withHeadlessEditorLock(async () => {
-    const { editor } = createEditorWithState(createHeadlessEditor, { editorData, fallbackContent });
+    const { editor } = createEditorWithState(createDocumentHeadlessEditor, {
+      editorData,
+      fallbackContent,
+    });
 
     try {
       const beforeSnapshot = exportSnapshot(editor, true);
@@ -264,11 +287,18 @@ export const applyLiteXMLOperations = async ({
         const label = describeLiteXMLEditStep(step, operations.length);
         const document = indexLiteXMLDocument(current.litexml ?? '');
 
+        const malformed = 'litexml' in operation && findMalformedLiteXML(operation.litexml);
+        if (malformed) {
+          throw new Error(
+            `${label} failed: ${malformed}. No operations were saved; fix the litexml and retry the whole batch.`,
+          );
+        }
+
         const problem = findLiteXMLEditStepProblem(operation, document);
         if (problem) throw new Error(`${label} failed: ${problem}. ${NOTHING_SAVED_HINT}`);
 
         await editor.applyLiteXML(
-          toHeadlessLiteXMLOperation(operation, !touchesList(operation, document)),
+          toHeadlessLiteXMLOperation(operation, canApplyAsReviewDiff(operation, document)),
         );
         const next = exportSnapshot(editor, true);
 
