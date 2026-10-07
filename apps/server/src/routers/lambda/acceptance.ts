@@ -32,6 +32,7 @@ import { isUuid } from '@/database/utils/uuid';
 import { publicProcedure, router } from '@/libs/trpc/lambda';
 import { serverDatabase } from '@/libs/trpc/lambda/middleware';
 import { FileService } from '@/server/services/file';
+import { GoalBriefService } from '@/server/services/goal/goalBriefs';
 import { parseChangeRequestUrl } from '@/server/services/scm/changeRequestUrl';
 import {
   AcceptanceService,
@@ -172,7 +173,7 @@ const acceptanceWriteProcedure = acceptanceProcedure.use(requireWorkspaceRoleWhe
  * `decidedBy` and an audit trail that credits a teammate's verdict to the
  * author is worse than one nobody can sign.
  */
-const resolveAcceptanceForWrite = async (
+export const resolveAcceptanceForWrite = async (
   ctx: { serverDB: LobeChatDatabase; userId: string },
   id: string,
 ): Promise<{ acceptance: AcceptanceItem; service: AcceptanceService }> => {
@@ -213,12 +214,52 @@ const canReadAcceptance = async (
   return Boolean(member);
 };
 
+/**
+ * The list panel's narrowing, shared by the flat and paged reads. `projectId:
+ * null` asks for acceptances filed under no project.
+ */
+const acceptanceListFiltersSchema = z.object({
+  filter: z.enum(['active', 'all', 'completed']).optional(),
+  projectId: z.string().nullable().optional(),
+  scope: z.enum(['all', 'created', 'participated']).optional(),
+  source: z.enum(['all', 'goal', 'standalone', 'task', 'topic']).optional(),
+});
+
+/**
+ * Tag each list row with whether the caller may rename, refile, re-status or
+ * delete it. "Participated" rows are often someone else's, so the panel must
+ * know which menus to offer instead of letting the write fail as NOT_FOUND.
+ */
+const withManageFlag = async <T extends Pick<AcceptanceItem, 'id' | 'userId' | 'workspaceId'>>(
+  ctx: { serverDB: LobeChatDatabase; userId: string },
+  rows: T[],
+): Promise<Array<T & { canManage: boolean }>> => {
+  const manageable = new Set((await filterManageableAcceptances(ctx, rows)).map((row) => row.id));
+  return rows.map((row) => ({ ...row, canManage: manageable.has(row.id) }));
+};
+
 /** Max rows one multi-select sweep may touch — the list itself is capped at 200. */
 const ACCEPTANCE_BATCH_LIMIT = 200;
 const PURGE_BATCH_CONCURRENCY = 4;
 const PURGE_PREVIEW_LIMIT = 20;
 
 const acceptanceStatusOverrideSchema = z.enum(['delivered', 'accepted', 'closed', 'rejected']);
+
+/**
+ * A decided acceptance has nothing left to sign: whichever control decided it,
+ * the inbox and the island stop asking for the goal sign-off it carried.
+ */
+const settleGoalSignOff = (
+  db: LobeChatDatabase,
+  acceptance: AcceptanceItem,
+  action: string,
+  comment?: string,
+) =>
+  new GoalBriefService(db, acceptance.userId, acceptance.workspaceId ?? undefined).settleSignOff(
+    acceptance.id,
+    action,
+    comment,
+  );
 
 /**
  * Apply one user-facing lifecycle override to an already-resolved,
@@ -233,22 +274,26 @@ const acceptanceStatusOverrideSchema = z.enum(['delivered', 'accepted', 'closed'
  * not be forced back to a decision-pending state by hand.
  */
 const applyAcceptanceStatus = async (
+  db: LobeChatDatabase,
   service: AcceptanceService,
   acceptance: AcceptanceItem,
   status: z.infer<typeof acceptanceStatusOverrideSchema>,
 ) => {
   if (status === 'accepted') {
     await service.accept(acceptance.id);
+    await settleGoalSignOff(db, acceptance, 'signOff');
     return;
   }
 
   if (status === 'closed') {
     await service.acceptanceModel.updateStatus(acceptance.id, 'closed');
+    await settleGoalSignOff(db, acceptance, 'closed');
     return;
   }
 
   if (status === 'rejected') {
     await service.reject(acceptance.id, 'Rejected from the acceptance list — needs another round.');
+    await settleGoalSignOff(db, acceptance, 'requestChanges');
     return;
   }
 
@@ -396,7 +441,10 @@ export const acceptanceRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { acceptance, service } = await resolveAcceptanceForWrite(ctx, input.id);
 
-      return service.accept(acceptance.id, input.comment);
+      const accepted = await service.accept(acceptance.id, input.comment);
+      // Signed where it lives — the inbox stops asking for the same sign-off.
+      await settleGoalSignOff(ctx.serverDB, acceptance, 'signOff', input.comment);
+      return accepted;
     }),
 
   /**
@@ -935,44 +983,38 @@ export const acceptanceRouter = router({
    */
   list: acceptanceProcedure
     .input(
-      z
-        .object({
-          filter: z.enum(['active', 'all', 'completed']).optional(),
+      acceptanceListFiltersSchema
+        .extend({
           limit: z.number().int().min(1).max(200).optional(),
-          projectId: z.string().optional(),
           q: z.string().max(200).optional(),
         })
         .optional(),
     )
-    .query(async ({ ctx, input }) => ctx.acceptanceService.listWithSubjects(input)),
+    .query(async ({ ctx, input }) =>
+      withManageFlag(ctx, await ctx.acceptanceService.listWithSubjects(input)),
+    ),
 
   /**
    * One keyset page of the same feed — what the list panel scrolls.
    *
-   * Speaks the same `filter` vocabulary as `list`, applied in the query, so a
+   * Speaks the same filter vocabulary as `list`, applied in the query, so a
    * page of "in progress" is a full page of in-progress rows. There is no
    * paged search on purpose: a title search must span the whole owned set,
    * which `list` already does — the panel asks that one while a query is live.
    */
   listPage: acceptanceProcedure
     .input(
-      z
-        .object({
+      acceptanceListFiltersSchema
+        .extend({
           cursor: z.string().optional(),
-          filter: z.enum(['active', 'all', 'completed']).optional(),
           limit: z.number().int().min(1).max(100).optional(),
-          projectId: z.string().optional(),
         })
         .optional(),
     )
-    .query(async ({ ctx, input }) =>
-      ctx.acceptanceService.listPageWithSubjects({
-        cursor: input?.cursor,
-        filter: input?.filter,
-        limit: input?.limit,
-        projectId: input?.projectId,
-      }),
-    ),
+    .query(async ({ ctx, input }) => {
+      const page = await ctx.acceptanceService.listPageWithSubjects({ ...input });
+      return { ...page, items: await withManageFlag(ctx, page.items) };
+    }),
 
   /**
    * Fold one acceptance into another: the source's verification rounds (and
@@ -1327,6 +1369,12 @@ export const acceptanceRouter = router({
         const { acceptance, service } = await resolveAcceptanceForWrite(ctx, input.id);
 
         const rejected = await service.reject(acceptance.id, input.comment || undefined);
+        await settleGoalSignOff(
+          ctx.serverDB,
+          acceptance,
+          'requestChanges',
+          input.comment || undefined,
+        );
         if (input.dispatch === false) {
           return { ...rejected, repairDispatch: { dispatched: false, reason: 'skipped' } };
         }
@@ -1456,7 +1504,7 @@ export const acceptanceRouter = router({
       const { acceptance, service } = await resolveAcceptanceForWrite(ctx, input.id);
 
       try {
-        await applyAcceptanceStatus(service, acceptance, input.status);
+        await applyAcceptanceStatus(ctx.serverDB, service, acceptance, input.status);
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         throw new TRPCError({
@@ -1492,7 +1540,7 @@ export const acceptanceRouter = router({
       for (const id of new Set(input.ids)) {
         try {
           const { acceptance, service } = await resolveAcceptanceForWrite(ctx, id);
-          await applyAcceptanceStatus(service, acceptance, input.status);
+          await applyAcceptanceStatus(ctx.serverDB, service, acceptance, input.status);
           updated += 1;
         } catch (error) {
           console.error('[acceptance] batch status update failed for %s', id, error);
