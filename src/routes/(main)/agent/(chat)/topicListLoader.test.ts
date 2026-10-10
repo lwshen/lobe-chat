@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { PRE_PAINT_HYDRATE_TIMEOUT } from '@/libs/replica/prePaint';
+
 import {
   agentChatTopicListLoader,
-  PRE_PAINT_HYDRATE_TIMEOUT,
   preHydrateMessagesForRoute,
   preHydrateTopicListForRoute,
 } from './topicListLoader';

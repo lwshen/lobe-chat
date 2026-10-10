@@ -77,6 +77,7 @@ import {
 import AppShellSkeleton, { APP_SHELL_FALLBACK_ID } from '@/spa/BootShell/AppShellSkeleton';
 import { loadRouteWithBuiltinToolSurfaces } from '@/spa/initialize/toolSurfaces';
 import { agentChatTopicListLoader } from '@/spa/router/agentChatTopicListLoader';
+import { pageListLoader } from '@/spa/router/pageListLoader';
 import { NoRouteSkeleton, routeMeta, type RouteSkeletonProps } from '@/spa/router/routeMeta';
 import { SettingsTabs } from '@/store/global/initialState';
 import { dynamicElement, dynamicLayout, ErrorBoundary, redirectElement } from '@/utils/router';
@@ -1163,6 +1164,7 @@ export const sharedMainAreaChildren: RouteObject[] = [
       { preloadId: 'page' },
     ),
     errorElement: <ErrorBoundary />,
+    loader: pageListLoader,
     path: 'page',
   },
 ];
