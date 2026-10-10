@@ -136,36 +136,6 @@ export const topicKeys = {
   ]),
 };
 
-// ---- topic comment ------------------------------------------------------
-export const topicCommentKeys = {
-  detail: def('topicComment:detail', (commentId: string) => ['topicComment:detail', commentId]),
-  replies: def(
-    'topicComment:replies',
-    (workspaceId: string | null, rootCommentId: string, cursor?: string) => [
-      'topicComment:replies',
-      workspaceId ?? '',
-      rootCommentId,
-      cursor ?? '',
-    ],
-  ),
-  summary: def('topicComment:summary', (topicId: string) => ['topicComment:summary', topicId]),
-  threads: def(
-    'topicComment:threads',
-    (workspaceId: string | null, topicId: string, messageId?: string, cursor?: string) => [
-      'topicComment:threads',
-      workspaceId ?? '',
-      topicId,
-      messageId ?? '',
-      cursor ?? '',
-    ],
-  ),
-  warmup: def('topicComment:warmup', (workspaceId: string, topicId: string) => [
-    'topicComment:warmup',
-    workspaceId,
-    topicId,
-  ]),
-};
-
 // ---- acceptance comment -------------------------------------------------
 export const acceptanceCommentKeys = {
   list: def('acceptanceComment:list', (acceptanceId: string) => [
@@ -1462,7 +1432,6 @@ export const swrKeys = {
   thread: threadKeys,
   tool: toolKeys,
   topic: topicKeys,
-  topicComment: topicCommentKeys,
   acceptanceComment: acceptanceCommentKeys,
   documentComment: documentCommentKeys,
   documentLike: documentLikeKeys,
