@@ -417,17 +417,15 @@ export const aiModelKeys = {
 };
 
 // ---- image generation ---------------------------------------------------
+// The topic list and the per-topic batches live in `@lobechat/replica`
+// resources now (see `src/store/image/slices/*/projection.ts`); only the
+// generation-status poll is still an SWR key.
 export const imageKeys = {
-  generationBatches: def('image:generationBatches', (topicId: string) => [
-    'image:generationBatches',
-    topicId,
-  ]),
   generationStatus: def('image:generationStatus', (generationId: string, asyncTaskId?: string) => [
     'image:generationStatus',
     generationId,
     asyncTaskId,
   ]),
-  generationTopics: def('image:generationTopics', () => ['image:generationTopics']),
 };
 
 // ---- video generation ---------------------------------------------------
