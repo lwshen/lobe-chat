@@ -56,6 +56,7 @@ import {
   resolveDeviceIdentity,
   resolveWorkspaceDeviceIdentity,
 } from '../device/register';
+import { TerminalSessionManager } from '../device/terminal';
 import {
   installConnectService,
   readConnectServiceStatus,
@@ -457,6 +458,15 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   // mode-specific `enrollWorkspace` / `unenrollWorkspace` handlers are attached
   // further below once the workspace-share machinery is in scope — every bound
   // connection reads this object by reference, so late attachment is safe.
+  //
+  // Interactive shells for the remote terminal. One manager per process, read
+  // by reference by every gateway connection this daemon owns, so a
+  // workspace-share connection reaches the same sessions as the personal one.
+  // Constructing it is cheap — the native PTY binding is only loaded when a
+  // session is actually created, so a daemon that never opens a terminal never
+  // touches it.
+  const terminals = new TerminalSessionManager({ logger: { warn: (message) => info(message) } });
+
   const maintenance = new CliMaintenance({
     activeTasks: () =>
       getActiveShellCount() + listTasks().filter((task) => isProcessAlive(task.pid)).length,
@@ -465,8 +475,11 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     restartArgs: buildDaemonArgs(options).slice(1),
     shutdown: () => shutdown(),
   });
+
   const deviceControlDeps: DeviceControlDeps = {
     checkCliUpdate: maintenance.check,
+    closeTerminal: (params) => Promise.resolve(terminals.close(params)),
+    createTerminalSession: (params) => terminals.create(params),
     getCliUpdateState: maintenance.getState,
     getLocalFilePreview: defaultGetLocalFilePreview,
     getProjectFileIndex: defaultGetProjectFileIndex,
@@ -475,8 +488,11 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
         ...params,
         env: { ...process.env, ...params.env },
       }),
+    readTerminal: (params) => Promise.resolve(terminals.read(params)),
+    resizeTerminal: (params) => Promise.resolve(terminals.resize(params)),
     restartCli: maintenance.restart,
     searchProjectFiles: defaultSearchProjectFiles,
+    writeTerminal: (params) => Promise.resolve(terminals.write(params)),
   };
 
   const handlerContext: GatewayHandlerContext = {
@@ -822,6 +838,9 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     info('Shutting down...');
     cancelRefreshTimer?.();
     cleanupAllProcesses();
+    // Kill every remote-terminal shell this daemon started, so a stopping
+    // `lh connect` does not leave orphaned PTYs behind on the machine.
+    terminals.dispose();
     // Close share connections but keep the persisted enrollments — the next
     // startup restores them (or clears them if revoked meanwhile).
     for (const wsId of workspaceConnections.keys()) closeWorkspaceConnection(wsId);

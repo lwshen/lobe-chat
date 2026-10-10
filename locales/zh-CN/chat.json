@@ -2328,6 +2328,7 @@
   "terminalPanel.createFailed": "终端会话启动失败",
   "terminalPanel.newTab": "新建终端",
   "terminalPanel.split": "拆分终端",
+  "terminalPanel.targetLocal": "本机",
   "terminalPanel.title": "终端",
   "textSelection.addToConversation": "添加到对话",
   "textSelection.added": "已添加到对话上下文",

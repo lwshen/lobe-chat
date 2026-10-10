@@ -761,6 +761,9 @@ importers:
 
   ../cli:
     dependencies:
+      '@lydell/node-pty':
+        specifier: 1.2.0-beta.15
+        version: 1.2.0-beta.15
       ws:
         specifier: ^8.21.0
         version: 8.22.0
