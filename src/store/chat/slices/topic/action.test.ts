@@ -258,6 +258,67 @@ describe('topic action', () => {
         await summaryPromise;
       });
     });
+
+    it('binds a deferred new topic to the staged project directory', async () => {
+      // ROOT CAUSE: "+" on a project group defers the row to the first message.
+      // Creating it with only the working-directory path left the topic outside
+      // its project — missing from the project list, mis-grouped in the sidebar
+      // and skipping the project-directory execution routing. The staged
+      // directory must ride along on the create call.
+      const { result } = renderHook(() => useChatStore());
+      const messages = [{ id: 'message1' }] as UIChatMessage[];
+      act(() => {
+        useChatStore.setState({
+          activeAgentId: 'session-id',
+          messagesMap: {
+            [messageMapKey({ agentId: 'session-id' })]: messages,
+          },
+          pendingNewTopicDirectory: {
+            agentId: 'session-id',
+            projectWorkingDirectoryId: 'binding-1',
+          },
+        });
+      });
+
+      const createTopicSpy = vi
+        .spyOn(topicService, 'createTopic')
+        .mockResolvedValue('new-topic-id');
+
+      await result.current.saveToTopic();
+
+      expect(createTopicSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ projectWorkingDirectoryId: 'binding-1' }),
+      );
+      // Consumed, so it cannot leak onto a later, unrelated topic.
+      expect(useChatStore.getState().pendingNewTopicDirectory).toBeUndefined();
+    });
+
+    it('does not apply a staged directory that belongs to another agent', async () => {
+      const { result } = renderHook(() => useChatStore());
+      const messages = [{ id: 'message1' }] as UIChatMessage[];
+      act(() => {
+        useChatStore.setState({
+          activeAgentId: 'session-id',
+          messagesMap: {
+            [messageMapKey({ agentId: 'session-id' })]: messages,
+          },
+          pendingNewTopicDirectory: {
+            agentId: 'another-agent',
+            projectWorkingDirectoryId: 'binding-1',
+          },
+        });
+      });
+
+      const createTopicSpy = vi
+        .spyOn(topicService, 'createTopic')
+        .mockResolvedValue('new-topic-id');
+
+      await result.current.saveToTopic();
+
+      expect(createTopicSpy).toHaveBeenCalledWith(
+        expect.not.objectContaining({ projectWorkingDirectoryId: expect.anything() }),
+      );
+    });
   });
   describe('refreshTopic', () => {
     afterEach(() => {

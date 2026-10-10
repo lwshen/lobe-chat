@@ -208,25 +208,39 @@ const GroupItem = memo<GroupItemComponentProps>(({ group, expanded }) => {
   const activeWorkspaceSlug = useActiveWorkspaceSlug();
   const { commitAgentDefault } = useCommitWorkingDirectory(currentAgentId ?? '');
 
-  const handleAddTopic = useCallback(async () => {
-    if (!workingDirectory || !currentAgentId || !targetAgentId) return;
-    // Write the agent's per-device default so the new topic inherits this
-    // directory at creation time — the same high-precedence slot the picker
-    // uses, not the legacy per-agent fallback that gets shadowed by it.
-    await commitAgentDefault(workingDirectory);
-    useChatStore.getState().switchTopic(null, { skipRefreshMessage: true });
-    router.push(
-      buildPrefixedAgentRoutePath(AGENT_CHAT_URL(targetAgentId), agentRoute, activeWorkspaceSlug),
-    );
-  }, [
-    workingDirectory,
-    currentAgentId,
-    targetAgentId,
-    commitAgentDefault,
-    router,
-    agentRoute,
-    activeWorkspaceSlug,
-  ]);
+  const handleAddTopic = useCallback(
+    async (projectWorkingDirectoryId?: string) => {
+      if (!workingDirectory || !currentAgentId || !targetAgentId) return;
+      // Write the agent's per-device default so the new topic inherits this
+      // directory at creation time — the same high-precedence slot the picker
+      // uses, not the legacy per-agent fallback that gets shadowed by it.
+      await commitAgentDefault(workingDirectory);
+      useChatStore.getState().switchTopic(null, { skipRefreshMessage: true });
+      // No topic row is created here — the first message creates it. Stage the
+      // project directory so that creation binds the deferred row to the
+      // project (list, sidebar grouping and execution routing), instead of
+      // dropping it into a path-only conversation.
+      useChatStore
+        .getState()
+        .setPendingNewTopicDirectory(
+          projectWorkingDirectoryId
+            ? { agentId: targetAgentId, projectWorkingDirectoryId }
+            : undefined,
+        );
+      router.push(
+        buildPrefixedAgentRoutePath(AGENT_CHAT_URL(targetAgentId), agentRoute, activeWorkspaceSlug),
+      );
+    },
+    [
+      workingDirectory,
+      currentAgentId,
+      targetAgentId,
+      commitAgentDefault,
+      router,
+      agentRoute,
+      activeWorkspaceSlug,
+    ],
+  );
 
   // A merged project group may span several machines. It opens the plain new
   // topic composer — no directory is pre-committed and no chooser modal pops;
