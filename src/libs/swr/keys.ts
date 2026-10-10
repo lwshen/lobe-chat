@@ -443,7 +443,7 @@ export const serverConfigKeys = {
 
 // ---- discover (marketplace) ---------------------------------------------
 // NOTE: discover/eval/ragEval/knowledgeBase/device/userMemory/agentKnowledge/
-// agentBot/file prefixes are deliberately kept OUT of `CACHE_TIERS`
+// file prefixes are deliberately kept OUT of `CACHE_TIERS`
 // (see localStorageProvider.ts) so this key-convergence introduces no new
 // persistence — they stay memory-only exactly as before.
 export const discoverKeys = {
@@ -848,12 +848,6 @@ export const agentKnowledgeKeys = {
       return visibility ? [...base, visibility] : base;
     },
   ),
-};
-
-// ---- agent bot ----------------------------------------------------------
-export const agentBotKeys = {
-  platformDefinitions: def('agentBot:platformDefinitions', () => ['agentBot:platformDefinitions']),
-  providers: def('agentBot:providers', (agentId: string) => ['agentBot:providers', agentId]),
 };
 
 // ---- file ---------------------------------------------------------------
@@ -1366,7 +1360,6 @@ export const matchDomain =
  */
 export const swrKeys = {
   agent: agentConfigKeys,
-  agentBot: agentBotKeys,
   agentBuilder: agentBuilderKeys,
   agentDocument: agentDocumentSWRKeys,
   agentHome: agentHomeKeys,
