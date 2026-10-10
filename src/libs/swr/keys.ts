@@ -902,7 +902,6 @@ export const agentBotKeys = {
 
 // ---- file ---------------------------------------------------------------
 export const fileKeys = {
-  knowledgeItems: def('file:knowledgeItems', (params: unknown) => ['file:knowledgeItems', params]),
   ttsFile: def('file:ttsFile', (messageId: string) => ['file:ttsFile', messageId]),
 };
 

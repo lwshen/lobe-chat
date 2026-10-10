@@ -89,8 +89,16 @@ export interface ReplicaEngineOptions<TParams, TData, TFetched> {
   ) => TFetched | undefined;
   /** Re-run the network sync of one entry (or all); wired by the fetch adapter. */
   revalidate?: (key?: string) => Promise<unknown>;
-  /** Strip transient / client-only parts before persisting; `undefined` skips. */
-  toPersisted?: (data: TData) => TData | undefined;
+  /**
+   * Strip transient / client-only parts before persisting.
+   *
+   * - a value → persisted
+   * - `undefined` → skip this write (keep whatever is already stored)
+   * - `null` → the entry is a server-confirmed absence: drop any prior
+   *   persisted projection, so a later hydrate cannot paint a value the server
+   *   no longer has (the view keeps the confirmed value).
+   */
+  toPersisted?: (data: TData) => TData | null | undefined;
   /** Paged: domain fields derived from params, written with every head page. */
   viewFields?: (params: TParams) => Partial<TData>;
 }
@@ -137,7 +145,7 @@ export const createReplicaEngine = <TParams, TData, TFetched = TData>(
     queryKey: replicaStorageKey(key, query),
   });
 
-  const toPersisted = (data: TData): TData | undefined => {
+  const toPersisted = (data: TData): TData | null | undefined => {
     const paged = paging ? (toPersistedPage(data as any, paging, pagingCtx) as TData) : data;
     return options.toPersisted ? options.toPersisted(paged) : paged;
   };
@@ -186,6 +194,13 @@ export const createReplicaEngine = <TParams, TData, TFetched = TData>(
       }
       const data = toPersisted(effect.data);
       if (data === undefined) continue;
+      if (data === null) {
+        // Server-confirmed absence: remove the prior projection rather than
+        // leaving it to be hydrated as if the value were still current.
+        writeQueue.remove(key);
+        trackStorageKey(effect.scope, key.queryKey, false);
+        continue;
+      }
       writeQueue.set(key, { data, updatedAt: Date.now() });
       trackStorageKey(effect.scope, key.queryKey, true);
     }
