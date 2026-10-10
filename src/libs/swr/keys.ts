@@ -279,12 +279,14 @@ export const isMyTaskListKey = (key: unknown): boolean =>
   Array.isArray(key) && key[0] === 'task:myList';
 
 /**
- * Goal Graph reads. Keyed by the `goals` row id (not the carrier task's
- * identifier) because that is what every `goal.*` procedure takes.
+ * Goal reads that have no local-first projection: the pending queues are live
+ * "what needs you" feeds, and the topic link is a discovery poll.
+ *
+ * The goal list, the home roll-up, the graph snapshot and the metric series
+ * used to live here — they are `@lobechat/replica` resources now (see
+ * `src/store/goal/projection.ts`), so their sync keys are not SWR cache keys.
  */
 export const goalKeys = {
-  graph: def('goal:graph', (goalId: string) => ['goal:graph', goalId]),
-  metricSeries: def('goal:metricSeries', (goalId: string) => ['goal:metricSeries', goalId]),
   /** Clarifications waiting on the user across every goal they own. */
   pendingClarifications: def('goal:pendingClarifications', () => ['goal:pendingClarifications']),
   /** Gates and sign-offs waiting on the user across every goal, for the approval island. */
@@ -294,12 +296,6 @@ export const goalKeys = {
 };
 
 export const taskKeys = {
-  /**
-   * The home rail's cross-agent goal roll-up. Scoped by cache scope like the
-   * other home feeds — goals are workspace rows, so a list left over from the
-   * previous workspace holds ids this one cannot open.
-   */
-  homeGoals: def('task:homeGoals', (scope: string) => ['task:homeGoals', scope]),
   /**
    * Home's automated-task roll-up: the tasks that fire on a schedule or a
    * heartbeat. Kept off `list` because it is a different result set entirely —
