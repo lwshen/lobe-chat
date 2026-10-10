@@ -1,9 +1,11 @@
 import { revalidateReplica } from '@/libs/replica';
 import { mutate } from '@/libs/swr';
 import { portalKeys } from '@/libs/swr/keys';
+import { notebookDocumentsResource } from '@/store/notebook/projection';
+import { pageDetailResource, pageListResource } from '@/store/page/projection';
 import { agentDocumentSkillsResource } from '@/store/tool/slices/agentDocumentSkills/projection';
 
-import { agentDocumentSWRKeys, documentSWRKeys, notebookSWRKeys } from './swrKeys';
+import { agentDocumentSWRKeys, documentSWRKeys } from './swrKeys';
 
 export type DocumentMutationCause =
   'agent-document' | 'document-service' | 'notebook' | 'page-title';
@@ -35,17 +37,24 @@ export const invalidateDocumentMutation = async (
     if (refreshDocumentEditor !== false) {
       revalidations.push(mutate(documentSWRKeys.editor(documentId)));
     }
-    revalidations.push(mutate(documentSWRKeys.pageDetail(documentId)));
-    revalidations.push(mutate(documentSWRKeys.pageMeta(documentId)));
+    // The page domain is a `@lobechat/replica` domain, so its by-id copy and
+    // its list sync through `replica:sync` keys rather than the SWR cache:
+    // refresh them here or a rename / move would not reach the Pages sidebar or
+    // the page header until a remount.
+    revalidations.push(revalidateReplica(pageDetailResource, documentId));
     revalidations.push(mutate(portalKeys.documentHeader(documentId)));
   }
 
   if (documentId || refreshPageDocuments) {
-    revalidations.push(mutate(documentSWRKeys.pageDocuments()));
+    revalidations.push(revalidateReplica(pageListResource));
   }
 
   if (topicId) {
-    revalidations.push(mutate(notebookSWRKeys.documents(topicId)));
+    // The topic's document list is a replica, so its sync lives outside the
+    // legacy `notebook:documents` SWR entry. Refresh the affected topic only: a
+    // create / update / delete must reach the notebook portal without waiting
+    // for a remount.
+    revalidations.push(revalidateReplica(notebookDocumentsResource, topicId));
   }
 
   if (agentId) {

@@ -316,8 +316,28 @@ export class ChatTopicActionImpl {
     this.#set({ allTopicsDrawerOpen: true }, false, n('openAllTopicsDrawer'));
   };
 
+  /**
+   * Stage (or clear) the project working directory the next topic creation
+   * binds to.
+   *
+   * `+` on a project group opens a blank conversation *without* creating a row;
+   * this records which directory that blank conversation belongs to, and
+   * `internal_createTopic` applies it when the first message creates the topic.
+   * Without it the deferred row would be born with only a path — outside the
+   * project list, the sidebar's project grouping and its execution routing.
+   */
+  setPendingNewTopicDirectory = (value?: {
+    agentId: string;
+    projectWorkingDirectoryId: string;
+  }): void => {
+    this.#set({ pendingNewTopicDirectory: value }, false, n('setPendingNewTopicDirectory'));
+  };
+
   openNewTopicOrSaveTopic = async (): Promise<void> => {
     const { switchTopic, saveToTopic, refreshMessages, activeTopicId } = this.#get();
+    // An explicit new topic supersedes whatever a group "+" staged — the user
+    // asked for a plain conversation, not one inside that project directory.
+    this.#get().setPendingNewTopicDirectory();
     const hasTopic = !!activeTopicId;
 
     if (hasTopic) switchTopic(null);
@@ -1557,6 +1577,12 @@ export class ChatTopicActionImpl {
       return;
 
     const epoch = ++this.#switchTopicEpoch;
+    // A staged project directory only describes the blank conversation it was
+    // opened from; moving to a real topic ends that window. Cleared here (after
+    // the guards) so a switch the guards dropped does not discard it.
+    if (id) {
+      this.#set({ pendingNewTopicDirectory: undefined }, false, n('clearPendingNewTopicDirectory'));
+    }
 
     this.#set(
       { activeTopicId: id || (null as any), activeThreadId: undefined },
@@ -1827,13 +1853,28 @@ export class ChatTopicActionImpl {
   };
 
   internal_createTopic = async (params: CreateTopicParams): Promise<string> => {
+    // A blank conversation opened from a project group's "+" carries the
+    // directory it belongs to — fold it into the create call so the row is born
+    // inside that project. Only for the agent it was staged on: a pending
+    // directory must never land on another agent's topic.
+    const pending = this.#get().pendingNewTopicDirectory;
+    const targetSessionId = params.sessionId ?? this.#get().activeAgentId;
+    const pendingDirectoryId =
+      pending && pending.agentId === targetSessionId
+        ? pending.projectWorkingDirectoryId
+        : undefined;
+    const createParams: CreateTopicParams = pendingDirectoryId
+      ? { ...params, projectWorkingDirectoryId: pendingDirectoryId }
+      : params;
+
     const tmpId = Date.now().toString();
     this.#get().internal_dispatchTopic(
-      { type: 'addTopic', value: { ...params, id: tmpId } },
+      { type: 'addTopic', value: { ...createParams, id: tmpId } },
       'internal_createTopic',
     );
 
-    const topicId = await topicService.createTopic(params);
+    const topicId = await topicService.createTopic(createParams);
+    if (pendingDirectoryId) this.#get().setPendingNewTopicDirectory();
     await this.#get().refreshTopic();
 
     return topicId;

@@ -6,11 +6,12 @@ import {
   AccordionPanel,
   accordionStyles,
   AccordionTrigger,
+  ActionIcon,
   Text,
 } from '@lobehub/ui/base-ui';
 import { createStaticStyles, cssVar, cx } from 'antd-style';
 import isEqual from 'fast-deep-equal';
-import { FolderClosedIcon, FolderOpenIcon, type LucideIcon } from 'lucide-react';
+import { FolderClosedIcon, FolderOpenIcon, type LucideIcon, PlusIcon } from 'lucide-react';
 import { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -43,6 +44,7 @@ import {
 } from './statusCounts';
 
 const PROJECT_GROUP_PREFIX = 'project:';
+const PROJECT_ID_GROUP_PREFIX = 'project-id:';
 
 const styles = createStaticStyles(({ css }) => ({
   statusBadge: css`
@@ -170,12 +172,24 @@ const GroupItem = memo<GroupItemComponentProps>(({ group, expanded }) => {
   const { id, title, children } = group;
   const scope = useTopicListScope();
   const navigate = useWorkspaceAwareNavigate();
+  // `project-id:` groups merge every directory of one project — resolve the
+  // project through any of its directories; directory/path groups keep the
+  // first child's exact directory so a shared path can't cross projects.
+  const projectId = id.startsWith(PROJECT_ID_GROUP_PREFIX)
+    ? id.slice(PROJECT_ID_GROUP_PREFIX.length)
+    : undefined;
   useProjectDirectoryStore((s) => s.useFetchDirectories)(
     undefined,
-    !!children[0]?.projectWorkingDirectoryId,
+    !!children[0]?.projectWorkingDirectoryId || !!projectId,
   );
   const directories = useProjectDirectories();
-  const project = directories.find((d) => d.id === children[0]?.projectWorkingDirectoryId);
+  const project = projectId
+    ? directories.find((d) => d.projectId === projectId)
+    : directories.find((d) => d.id === children[0]?.projectWorkingDirectoryId);
+  const projectDirectories = useMemo(
+    () => (projectId ? directories.filter((d) => d.projectId === projectId) : []),
+    [directories, projectId],
+  );
 
   const workingDirectory = useMemo(
     () =>
@@ -194,27 +208,56 @@ const GroupItem = memo<GroupItemComponentProps>(({ group, expanded }) => {
   const activeWorkspaceSlug = useActiveWorkspaceSlug();
   const { commitAgentDefault } = useCommitWorkingDirectory(currentAgentId ?? '');
 
-  const handleAddTopic = useCallback(async () => {
-    if (!workingDirectory || !currentAgentId || !targetAgentId) return;
-    // Write the agent's per-device default so the new topic inherits this
-    // directory at creation time — the same high-precedence slot the picker
-    // uses, not the legacy per-agent fallback that gets shadowed by it.
-    await commitAgentDefault(workingDirectory);
+  const handleAddTopic = useCallback(
+    async (projectWorkingDirectoryId?: string) => {
+      if (!workingDirectory || !currentAgentId || !targetAgentId) return;
+      // Write the agent's per-device default so the new topic inherits this
+      // directory at creation time — the same high-precedence slot the picker
+      // uses, not the legacy per-agent fallback that gets shadowed by it.
+      await commitAgentDefault(workingDirectory);
+      useChatStore.getState().switchTopic(null, { skipRefreshMessage: true });
+      // No topic row is created here — the first message creates it. Stage the
+      // project directory so that creation binds the deferred row to the
+      // project (list, sidebar grouping and execution routing), instead of
+      // dropping it into a path-only conversation.
+      useChatStore
+        .getState()
+        .setPendingNewTopicDirectory(
+          projectWorkingDirectoryId
+            ? { agentId: targetAgentId, projectWorkingDirectoryId }
+            : undefined,
+        );
+      router.push(
+        buildPrefixedAgentRoutePath(AGENT_CHAT_URL(targetAgentId), agentRoute, activeWorkspaceSlug),
+      );
+    },
+    [
+      workingDirectory,
+      currentAgentId,
+      targetAgentId,
+      commitAgentDefault,
+      router,
+      agentRoute,
+      activeWorkspaceSlug,
+    ],
+  );
+
+  // A merged project group may span several machines. It opens the plain new
+  // topic composer — no directory is pre-committed and no chooser modal pops;
+  // the user picks the machine/directory in the composer control bar, the
+  // same habit as the header's new-topic action. Single-directory groups keep
+  // the legacy direct start above.
+  const handleStartPlain = useCallback(() => {
+    if (!currentAgentId || !targetAgentId) return;
     useChatStore.getState().switchTopic(null, { skipRefreshMessage: true });
     router.push(
       buildPrefixedAgentRoutePath(AGENT_CHAT_URL(targetAgentId), agentRoute, activeWorkspaceSlug),
     );
-  }, [
-    workingDirectory,
-    currentAgentId,
-    targetAgentId,
-    commitAgentDefault,
-    router,
-    agentRoute,
-    activeWorkspaceSlug,
-  ]);
+  }, [currentAgentId, targetAgentId, router, agentRoute, activeWorkspaceSlug]);
 
   const canAddTopic = !scope && !!currentAgentId && !!workingDirectory;
+  const needsPlainStart = !!projectId && projectDirectories.length > 1;
+  const { t: tProject } = useTranslation('project');
 
   const statusCounts = useChatStore(
     (s) => getProjectTopicStatusCounts(children, operationSelectors.visiblyRunningTopicIds(s)),
@@ -233,12 +276,33 @@ const GroupItem = memo<GroupItemComponentProps>(({ group, expanded }) => {
         {hasCollapsedUnread && <CollapsedUnreadDot count={unreadCount} />}
         {canAddTopic && (
           <span className={hasCollapsedIndicators ? styles.addTopicAction : undefined}>
-            <AgentDirectoryActions
-              agentId={currentAgentId!}
-              path={workingDirectory!}
-              topics={children}
-              onLegacyStart={handleAddTopic}
-            />
+            {needsPlainStart ? (
+              <>
+                <AgentDirectoryActions
+                  hideStartAction
+                  agentId={currentAgentId!}
+                  path={workingDirectory!}
+                  topics={children}
+                  onLegacyStart={handleAddTopic}
+                />
+                <ActionIcon
+                  icon={PlusIcon}
+                  size={'small'}
+                  title={tProject('directories.start')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleStartPlain();
+                  }}
+                />
+              </>
+            ) : (
+              <AgentDirectoryActions
+                agentId={currentAgentId!}
+                path={workingDirectory!}
+                topics={children}
+                onLegacyStart={handleAddTopic}
+              />
+            )}
           </span>
         )}
       </Flexbox>

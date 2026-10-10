@@ -141,6 +141,72 @@ describe('createReplicaSlice', () => {
       expect(failing.store.getState().lists.b).toBeUndefined();
     });
 
+    it('drops the prior persisted projection when `toPersisted` reports a confirmed absence', async () => {
+      const storage = createMemoryStorage();
+      storage.rows.set('user-1:personal|a', { data: ['cached'], updatedAt: 1 });
+      const resource = defineReplica<{ id: string }, string[]>({
+        // The server confirms the id no longer exists.
+        fetcher: vi.fn(async () => []),
+        key: ({ id }) => id,
+        name: 'absentList',
+        scope,
+        storage: storage.storage,
+        version: 1,
+      });
+      const store = createStore<TestState>()(() => ({
+        lists: {},
+        listsReplica: createReplicaState(),
+      }));
+      const slice = createReplicaSlice<TestState, { id: string }, string[]>(resource, {
+        driver,
+        get: store.getState,
+        set: (partial) => store.setState(partial),
+        stateKey: 'listsReplica',
+        // An empty list is a confirmed absence: drop the stored row instead of
+        // leaving the stale projection to be hydrated again.
+        toPersisted: (data) => (data.length ? data : null),
+        view: recordLens('lists'),
+      });
+
+      renderHook(() => slice.useSync({ id: 'a' }), { wrapper });
+
+      // The confirmed absence replaces the hydrated value in the view…
+      await waitFor(() => expect(store.getState().lists.a).toEqual([]));
+      // …and the stale persisted projection is gone, so a reload cannot paint it.
+      await waitFor(() => expect(storage.rows.get('user-1:personal|a')).toBeUndefined());
+    });
+
+    it('keeps the stored row when `toPersisted` returns undefined (skip)', async () => {
+      const storage = createMemoryStorage();
+      storage.rows.set('user-1:personal|a', { data: ['cached'], updatedAt: 1 });
+      const resource = defineReplica<{ id: string }, string[]>({
+        fetcher: vi.fn(async () => ['server']),
+        key: ({ id }) => id,
+        name: 'skippedList',
+        scope,
+        storage: storage.storage,
+        version: 1,
+      });
+      const store = createStore<TestState>()(() => ({
+        lists: {},
+        listsReplica: createReplicaState(),
+      }));
+      const slice = createReplicaSlice<TestState, { id: string }, string[]>(resource, {
+        driver,
+        get: store.getState,
+        set: (partial) => store.setState(partial),
+        stateKey: 'listsReplica',
+        // `undefined` means "skip this write", not "remove".
+        toPersisted: () => undefined,
+        view: recordLens('lists'),
+      });
+
+      renderHook(() => slice.useSync({ id: 'a' }), { wrapper });
+
+      await waitFor(() => expect(store.getState().lists.a).toEqual(['server']));
+      expect(storage.rows.get('user-1:personal|a')?.data).toEqual(['cached']);
+    });
+
     it('hands its schedule (polling, focus revalidation …) to the driver', () => {
       const useQuery = vi.fn(() => ({ isValidating: false, mutate: vi.fn() }));
       const resource = defineReplica<{ id: string }, string[]>({
@@ -219,6 +285,37 @@ describe('createReplicaSlice', () => {
       // The superseded query settles late: it must not overwrite the search.
       act(() => base.onSuccess(['a-1']));
       expect(store.getState().lists.all).toEqual(['b-1']);
+    });
+
+    it('syncs under a custom key when the resource adopts one', () => {
+      const useQuery = vi.fn(() => ({ isValidating: false, mutate: vi.fn() }));
+      const resource = defineReplica<{ id: string }, string[]>({
+        fetcher: async () => ['server'],
+        key: ({ id }) => id,
+        name: 'customKeyed',
+        scope,
+        syncKey: ({ id }) => ['legacy:list', id],
+        version: 1,
+      });
+      const store = createStore<TestState>()(() => ({
+        lists: {},
+        listsReplica: createReplicaState(),
+      }));
+      const slice = createReplicaSlice<TestState, { id: string }, string[]>(resource, {
+        driver: { revalidate: vi.fn(), useQuery },
+        get: store.getState,
+        set: (partial) => store.setState(partial),
+        stateKey: 'listsReplica',
+        view: recordLens('lists'),
+      });
+
+      renderHook(() => slice.useSync({ id: 'a' }));
+
+      expect(useQuery).toHaveBeenCalledWith(
+        ['legacy:list', 'a'],
+        expect.any(Function),
+        expect.any(Object),
+      );
     });
 
     it('does not let a slow hydration overwrite a faster server response', async () => {
