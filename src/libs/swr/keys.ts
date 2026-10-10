@@ -443,7 +443,7 @@ export const serverConfigKeys = {
 
 // ---- discover (marketplace) ---------------------------------------------
 // NOTE: discover/eval/ragEval/knowledgeBase/device/userMemory/agentKnowledge/
-// agentBot/file prefixes are deliberately kept OUT of `CACHE_TIERS`
+// file prefixes are deliberately kept OUT of `CACHE_TIERS`
 // (see localStorageProvider.ts) so this key-convergence introduces no new
 // persistence — they stay memory-only exactly as before.
 export const discoverKeys = {
@@ -558,17 +558,6 @@ export const discoverKeys = {
   pluginIdentifiers: def('discover:pluginIdentifiers', () => ['discover:pluginIdentifiers']),
   pluginList: def('discover:pluginList', (locale: string, params: unknown) => [
     'discover:pluginList',
-    locale,
-    params,
-  ]),
-  providerDetail: def('discover:providerDetail', (locale: string, identifier: string) => [
-    'discover:providerDetail',
-    locale,
-    identifier,
-  ]),
-  providerIdentifiers: def('discover:providerIdentifiers', () => ['discover:providerIdentifiers']),
-  providerList: def('discover:providerList', (locale: string, params: unknown) => [
-    'discover:providerList',
     locale,
     params,
   ]),
@@ -848,12 +837,6 @@ export const agentKnowledgeKeys = {
       return visibility ? [...base, visibility] : base;
     },
   ),
-};
-
-// ---- agent bot ----------------------------------------------------------
-export const agentBotKeys = {
-  platformDefinitions: def('agentBot:platformDefinitions', () => ['agentBot:platformDefinitions']),
-  providers: def('agentBot:providers', (agentId: string) => ['agentBot:providers', agentId]),
 };
 
 // ---- file ---------------------------------------------------------------
@@ -1330,13 +1313,6 @@ export const userKeys = {
   checkTrace: def('user:checkTrace', () => ['user:checkTrace']),
   initState: def('user:initState', () => ['user:initState']),
 };
-export const builtinAgentKeys = {
-  init: def('builtinAgent:init', (slug: string, scope: string) => [
-    'builtinAgent:init',
-    slug,
-    scope,
-  ]),
-};
 export const imessageKeys = {
   bridgeStatus: def('imessage:bridgeStatus', () => ['imessage:bridgeStatus']),
 };
@@ -1366,7 +1342,6 @@ export const matchDomain =
  */
 export const swrKeys = {
   agent: agentConfigKeys,
-  agentBot: agentBotKeys,
   agentBuilder: agentBuilderKeys,
   agentDocument: agentDocumentSWRKeys,
   agentHome: agentHomeKeys,
@@ -1376,7 +1351,6 @@ export const swrKeys = {
   aiModel: aiModelKeys,
   auth: authKeys,
   brief: briefKeys,
-  builtinAgent: builtinAgentKeys,
   changelog: changelogKeys,
   cron: cronKeys,
   device: deviceKeys,
