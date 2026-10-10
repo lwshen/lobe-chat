@@ -1001,6 +1001,39 @@ describe('Task Router Integration', () => {
     });
   });
 
+  describe('usage', () => {
+    it('aggregates the task topic usage', async () => {
+      const task = await caller.create({ instruction: 'Measure this task' });
+      await new TaskTopicModel(serverDB, userId).add(task.data.id, testTopicId, {
+        operationId: 'op_usage',
+        seq: 1,
+      });
+      const { topics } = await import('@/database/schemas');
+      const { eq } = await import('drizzle-orm');
+      await serverDB
+        .update(topics)
+        .set({
+          totalCost: '0.125',
+          totalInputTokens: 1200,
+          totalOutputTokens: 300,
+          totalTokens: 1500,
+        })
+        .where(eq(topics.id, testTopicId));
+
+      const result = await caller.usage({ id: task.data.identifier });
+
+      expect(result.data).toMatchObject({
+        runs: 1,
+        taskId: task.data.id,
+        taskIdentifier: task.data.identifier,
+        totalCost: 0.125,
+        totalInputTokens: 1200,
+        totalOutputTokens: 300,
+        totalTokens: 1500,
+      });
+    });
+  });
+
   describe('run error rollback', () => {
     it('should rollback task status to paused on run failure', async () => {
       mockExecAgent.mockRejectedValueOnce(new Error('LLM failed'));

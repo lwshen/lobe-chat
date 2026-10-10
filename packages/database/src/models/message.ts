@@ -18,6 +18,7 @@ import type {
   MessageMetadata,
   MessagePluginItem,
   ModelRankItem,
+  ModelReasoning,
   ModelUsage,
   NewMessageQueryParams,
   QueryMessageParams,
@@ -291,10 +292,16 @@ export interface TopicTranscriptMessage {
   id: string;
   messageGroupId: string | null;
   metadata: MessageMetadata | null;
+  model: string | null;
   parentId: string | null;
+  pluginError: unknown;
+  provider: string | null;
+  reasoning: ModelReasoning | null;
   role: string;
   threadId: string | null;
+  toolCallId: string | null;
   tools: ChatToolPayload[] | null;
+  usage: ModelUsage | null;
 }
 
 export interface TopicTranscriptResult {
@@ -1514,6 +1521,12 @@ export class MessageModel {
           agentId: messages.agentId,
           error: messages.error,
           metadata: messages.metadata,
+          model: messages.model,
+          pluginError: messagePlugins.error,
+          provider: messages.provider,
+          reasoning: messages.reasoning,
+          toolCallId: messagePlugins.toolCallId,
+          usage: messages.usage,
           content: messages.content,
           createdAt: messages.createdAt,
           id: messages.id,
@@ -1524,6 +1537,7 @@ export class MessageModel {
           tools: messages.tools,
         })
         .from(messages)
+        .leftJoin(messagePlugins, and(eq(messagePlugins.id, messages.id), this.pluginsOwnership()))
         .where(where)
         .orderBy(asc(messages.createdAt), asc(messages.id))
         .limit(limit)
@@ -1535,11 +1549,12 @@ export class MessageModel {
     ]);
 
     return {
-      items: items.map(({ tools, ...message }) => ({
+      items: items.map(({ tools, usage, ...message }) => ({
         ...message,
         error: message.error as ChatMessageError | null,
         metadata: message.metadata as MessageMetadata | null,
         tools: Array.isArray(tools) ? (tools as ChatToolPayload[]) : null,
+        usage: usage ?? message.metadata?.usage ?? null,
       })),
       total: totalResult[0]?.count ?? 0,
     };

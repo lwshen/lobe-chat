@@ -736,6 +736,33 @@ export function registerTaskCommand(program: Command) {
       else log.info('Root task not found in tree.');
     });
 
+  // ── usage ──────────────────────────────────────────────
+
+  task
+    .command('usage <id>')
+    .description('Show task run usage')
+    .option('--json [fields]', 'Output JSON')
+    .action(async (id: string, options: { json?: string | boolean }) => {
+      const client = await getTrpcClient();
+      const result = await client.task.usage.query({ id });
+
+      if (options.json !== undefined) {
+        outputJson(result.data, options.json);
+        return;
+      }
+
+      const usage = result.data;
+      console.log(`${pc.dim('Task:')} ${pc.bold(usage.taskIdentifier)}`);
+      console.log(`${pc.dim('Runs:')} ${usage.runs.toLocaleString('en-US')}`);
+      console.log(
+        `${pc.dim('Tokens:')} ${usage.totalTokens.toLocaleString('en-US')} ` +
+          pc.dim(
+            `(input ${usage.totalInputTokens.toLocaleString('en-US')}, output ${usage.totalOutputTokens.toLocaleString('en-US')})`,
+          ),
+      );
+      console.log(`${pc.dim('Cost:')} $${usage.totalCost.toFixed(6)}`);
+    });
+
   // Register subcommand groups
   registerLifecycleCommands(task);
   registerCheckpointCommands(task);

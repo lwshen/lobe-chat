@@ -420,14 +420,22 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
   info('───────────────────');
 
   // Update local connection status so other CLI commands can resolve the current device
-  const updateStatus = (connectionStatus: string) => {
+  let connectionStatus = 'connecting';
+  let lastRequestAt: string | undefined;
+  const updateStatus = (status: string) => {
+    connectionStatus = status;
     writeStatus({
       connectionStatus,
       deviceId: client.currentDeviceId,
       gatewayUrl: resolvedGatewayUrl,
+      lastRequestAt,
       pid: process.pid,
       startedAt: startedAt.toISOString(),
     });
+  };
+  const recordRequest = () => {
+    lastRequestAt = new Date().toISOString();
+    updateStatus(connectionStatus);
   };
 
   const startedAt = new Date();
@@ -479,6 +487,7 @@ async function runConnect(options: ConnectOptions, isDaemonChild: boolean) {
     info,
     isDaemonChild,
     maintenance,
+    recordRequest,
   };
 
   // Request handlers (system info / tool calls / device RPCs / agent runs) —
@@ -891,6 +900,7 @@ interface GatewayHandlerContext {
   info: (msg: string) => void;
   isDaemonChild: boolean;
   maintenance: CliMaintenance;
+  recordRequest: () => void;
 }
 
 /**
@@ -904,7 +914,7 @@ function bindGatewayClientHandlers(
   ctx: GatewayHandlerContext,
   connectionWorkspaceId?: string,
 ) {
-  const { deps, error, getServerUrl, info, isDaemonChild, maintenance } = ctx;
+  const { deps, error, getServerUrl, info, isDaemonChild, maintenance, recordRequest } = ctx;
 
   // Handle system info requests
   client.on('system_info_request', (request: SystemInfoRequestMessage) => {
@@ -918,6 +928,7 @@ function bindGatewayClientHandlers(
 
   // Handle tool call requests
   client.on('tool_call_request', async (request: ToolCallRequestMessage) => {
+    recordRequest();
     const { operationId, requestId, timeout, toolCall } = request;
     if (isDaemonChild) {
       appendLog(
@@ -989,6 +1000,7 @@ function bindGatewayClientHandlers(
   // once the child starts, `rejected` if it fails to spawn (e.g. bad cwd) — so
   // a failed dispatch surfaces as an error instead of a stuck assistant message.
   client.on('agent_run_request', async (request: AgentRunRequestMessage) => {
+    recordRequest();
     info(
       `Received agent_run_request: operationId=${request.operationId} type=${request.agentType}`,
     );
