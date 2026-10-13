@@ -1400,6 +1400,9 @@ describe('DataSlice', () => {
     });
 
     it('should use different SWR keys for different threadIds', () => {
+      // The SWR mock runs the fetcher; an unmocked list read rejects after the test.
+      vi.mocked(messageService.getMessages).mockResolvedValue([]);
+
       const store1 = createStore({
         context: { agentId: 'session-1', topicId: 'topic-1', threadId: 'thread-1' },
       });
@@ -1431,6 +1434,9 @@ describe('DataSlice', () => {
     });
 
     it('should use same SWR key structure with Object containing sessionId, topicId, threadId', () => {
+      // The SWR mock runs the fetcher; an unmocked list read rejects after the test.
+      vi.mocked(messageService.getMessages).mockResolvedValue([]);
+
       const store = createStore({
         context: { agentId: 'test-session', topicId: 'test-topic', threadId: 'test-thread' },
       });
@@ -1648,6 +1654,65 @@ describe('DataSlice', () => {
       });
     });
 
+    it('should keep optimistic send rows when a stale fetch resolves before the server run starts', async () => {
+      const context = { agentId: 'test-session', topicId: 'test-topic', threadId: null };
+      const previousReply: UIChatMessage = {
+        id: 'previous-reply',
+        content: 'Previous reply',
+        role: 'assistant',
+        createdAt: 1000,
+        updatedAt: 1000,
+      };
+      const optimisticUser: UIChatMessage = {
+        id: 'msg_user',
+        content: 'Follow-up question',
+        role: 'user',
+        createdAt: 2000,
+        updatedAt: 2000,
+      };
+      const optimisticAssistant: UIChatMessage = {
+        id: 'msg_assistant',
+        content: '...',
+        role: 'assistant',
+        createdAt: 2001,
+        updatedAt: 2001,
+      };
+
+      // The fetch was issued before the server persisted the new rows.
+      vi.mocked(messageService.getMessages).mockResolvedValue([
+        { ...previousReply, content: 'Previous reply (fetched)', updatedAt: 1500 },
+      ]);
+
+      const store = createStore({ context });
+      store.setState({
+        dbMessages: [previousReply, optimisticUser, optimisticAssistant],
+        messagesInit: true,
+      });
+
+      // `sendMessage` is still waiting for `execAgentTask`; no runtime operation exists yet.
+      const { operationId } = useChatStore.getState().startOperation({
+        context: { ...context, messageId: optimisticUser.id },
+        type: 'sendMessage',
+      });
+      useChatStore.getState().associateMessageWithOperation(optimisticUser.id, operationId);
+      useChatStore.getState().associateMessageWithOperation(optimisticAssistant.id, operationId);
+
+      try {
+        fetchMessagesOf(store)(context);
+
+        await waitFor(() => {
+          expect(store.getState().dbMessages[0].content).toBe('Previous reply (fetched)');
+        });
+        expect(store.getState().dbMessages.map((message) => message.id)).toEqual([
+          previousReply.id,
+          optimisticUser.id,
+          optimisticAssistant.id,
+        ]);
+      } finally {
+        useChatStore.getState().completeOperation(operationId);
+      }
+    });
+
     it('should keep an earlier local-only voice row ahead of a later fetched message', async () => {
       const localVoiceMessage: UIChatMessage = {
         id: 'tmp-voice-message',
@@ -1819,6 +1884,44 @@ describe('DataSlice', () => {
   });
 
   describe('switchMessageBranch', () => {
+    // ROOT CAUSE:
+    // MessageBranch calls this conversation action, which persists metadata
+    // directly rather than delegating to ChatStore.switchMessageBranch.
+    /** @example Leaving a live branch revokes retry before the UI swaps replies. */
+    it('revokes automatic recovery through the branch button action', async () => {
+      const store = createTestStore();
+      const context = store.getState().context;
+      const { operationId } = useChatStore.getState().startOperation({
+        context,
+        metadata: { heteroAutoRetryAvailable: true },
+        type: 'execServerAgentRuntime',
+      });
+      store.setState({
+        dbMessages: [
+          {
+            id: 'live-reply',
+            parentId: 'parent-user',
+            role: 'assistant',
+            content: '',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        ],
+      });
+      const update = vi
+        .spyOn(store.getState(), 'updateMessageMetadata')
+        .mockImplementation(async () => {
+          /** @example Even an error not yet rendered loses its automatic retry grant. */
+          expect(
+            useChatStore.getState().operations[operationId].metadata.heteroAutoRetryAvailable,
+          ).toBe(false);
+        });
+      await store.getState().switchMessageBranch('live-reply', 0);
+      /** @example The normal parent branch selection still persists. */
+      expect(update).toHaveBeenCalledWith('parent-user', { activeBranchIndex: 0 });
+      update.mockRestore();
+    });
+
     it('should call updateMessageMetadata on parent message with branch index', async () => {
       const store = createTestStore();
 

@@ -476,7 +476,7 @@ export default {
   'visibilityConfirm.publish.itemReversible':
     'You can switch it back to private later from the same menu',
   'visibilityConfirm.publish.itemCapturedState':
-    'Members can run its instances and reach everything it has captured — files, CLI logins, your signed-in identity',
+    'Members can run its copies and reach everything it has captured — files, CLI logins, your signed-in identity',
   'visibilityConfirm.publish.itemLoaded':
     'After switching back, content others have already loaded can’t be pulled back',
   'retry': 'Retry',
@@ -493,6 +493,25 @@ export default {
   'setting': 'Settings',
   'share': 'Share',
   'stop': 'Stop',
+  'supportAgent.context.attached': 'Diagnostic info attached',
+  'supportAgent.context.remove': 'Remove',
+  'supportAgent.error.failed': 'Something went wrong while answering. Try again.',
+  'supportAgent.error.invalid_conversation':
+    'This conversation can no longer be continued. Send again to start a new one.',
+  'supportAgent.error.rate_limited': "You've reached the hourly question limit. Try again later.",
+  'supportAgent.error.unavailable':
+    'The support assistant is unavailable right now. Try again later.',
+  'supportAgent.feedback': 'Community & feedback',
+  'supportAgent.newConversation': 'New conversation',
+  'supportAgent.placeholder': 'Describe your question…',
+  'supportAgent.starter.billing': 'How are credits calculated and charged?',
+  'supportAgent.starter.createAgent': 'How do I create and set up an agent?',
+  'supportAgent.starter.feedback': 'I want to report a problem or suggest a feature',
+  'supportAgent.starter.modelError': 'A model call failed. How do I troubleshoot it?',
+  'supportAgent.title': 'Lobe Support',
+  'supportAgent.welcome':
+    "Hi, I'm the Lobe support assistant. Ask me how something works, tell me what went wrong, or leave feedback for the team. I'm an AI, so double-check anything important.",
+  'supportAgent.working': 'Looking into it…',
   'switch': 'Switch',
   'sync.actions.settings': 'Sync Settings',
   'sync.actions.sync': 'Sync Now',
