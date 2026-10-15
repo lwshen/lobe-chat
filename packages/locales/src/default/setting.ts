@@ -518,6 +518,17 @@ export default {
   'heterogeneousStatus.cloud.tokenLabel': 'Claude Code Token',
   'heterogeneousStatus.cloud.tokenDesc':
     'Your Claude Code OAuth token. Saved securely to Credentials once submitted. Run `claude setup-token` in your terminal to generate one.',
+  'heterogeneousStatus.cloud.tokenLookupError':
+    "Couldn't check whether this token is available here. Retry to load it again.",
+  'heterogeneousStatus.cloud.tokenRetry': 'Retry',
+  'heterogeneousStatus.cloud.tokenSharedElsewhere':
+    'Your personal Claude Code token is shared to another workspace. Saving a token here moves it to this workspace, and cloud runs in the other workspace will no longer be able to use it.',
+  'heterogeneousStatus.cloud.tokenTypeMismatch':
+    'A credential with the key CLAUDE_CODE_OAUTH_TOKEN already exists with a different type. Remove or rename it in Credentials, then save again.',
+  'heterogeneousStatus.cloud.tokenNotShared':
+    'Your personal Claude Code token is not shared to this workspace, so cloud runs here cannot use it. Save a token to share it to this workspace.',
+  'heterogeneousStatus.cloud.tokenSaveError':
+    'Failed to save the Claude Code token. Please try again.',
   'heterogeneousStatus.cloud.tokenPlaceholder': 'Paste your OAuth token here',
   'heterogeneousStatus.cloud.tokenChange': 'Change',
   'heterogeneousStatus.cloud.tokenSave': 'Save',
@@ -3570,13 +3581,6 @@ When I am ___, I need ___
   'workspace.onboarding.flow.invite.send_other': 'Invite {{count}} members',
   'workspace.onboarding.flow.invite.skip': 'Skip for now, invite later',
   'workspace.onboarding.flow.invite.invalidEmails': 'Invalid email address: {{emails}}',
-  'workspace.onboarding.flow.messenger.title': "Bring the assistant into your team's chat",
-  'workspace.onboarding.flow.messenger.quote': 'Add me to your team group,',
-  'workspace.onboarding.flow.messenger.highlight': 'and I can help where everyone already is.',
-  'workspace.onboarding.flow.messenger.description':
-    'Once installed for the team, members can @{{name}} in the group to hand off work — nobody has to link it individually.',
-  'workspace.onboarding.flow.messenger.more':
-    'Using your own bot on Feishu, QQ, LINE or elsewhere? Set it up later in Agent → Channels.',
   'workspace.onboarding.flow.starterTasks.title': "Your team's first tasks",
   'workspace.onboarding.flow.starterTasks.description':
     'Hand these tasks to the team assistant and watch it work through them in the workspace.',
@@ -3585,6 +3589,20 @@ When I am ___, I need ___
   'workspace.onboarding.flow.starterTasks.empty':
     'No suggested tasks yet. You can finish setup now.',
   'workspace.onboarding.flow.starterTasks.addFailed': "Couldn't add the tasks. Please try again.",
+  'workspace.onboarding.flow.channels.title': "Bring the assistant into your team's chats",
+  'workspace.onboarding.flow.channels.description':
+    'Connect a bot your team owns to {{name}}. Everyone in the group can @{{name}} to hand off work — nobody has to link an account.',
+  'workspace.onboarding.flow.channels.quote': "Add me to your team's group chats,",
+  'workspace.onboarding.flow.channels.highlight': 'and anyone can hand me work.',
+  'workspace.onboarding.flow.channels.more': 'You can change channels anytime in Agent → Channels.',
+  'workspace.onboarding.flow.channels.configTitle': 'Connect {{platform}}',
+  'workspace.onboarding.flow.devices.title': 'Connect team devices',
+  'workspace.onboarding.flow.devices.subtitle':
+    'Enroll the team’s computers so the assistant can use Claude Code, Codex and other local agents on them.',
+  'workspace.onboarding.flow.devices.connect': 'Connect device',
+  'workspace.onboarding.flow.devices.count': '{{online}} of {{count}} online',
+  'workspace.onboarding.flow.devices.empty':
+    'No team devices yet. Install the desktop app or run lh connect on a team computer to add one.',
   'workspace.onboarding.step4.heading': '{{name}} is ready!',
   'workspace.onboarding.step4.subtitle':
     'Your workspace is set up. Jump in and start collaborating with your team.',
