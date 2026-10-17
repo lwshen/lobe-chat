@@ -45,7 +45,6 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import useSWR from 'swr';
 
 import { useBusinessWorkingSidebarTabs } from '@/business/client/features/WorkingSidebarTabs';
 import { useActiveWorkspaceId } from '@/business/client/hooks/useActiveWorkspaceId';
@@ -70,22 +69,17 @@ import { useEffectiveAgencyConfig } from '@/hooks/useEffectiveAgencyConfig';
 import { useEffectiveWorkingDirectory } from '@/hooks/useEffectiveWorkingDirectory';
 import { useLocalStorageState } from '@/hooks/useLocalStorageState';
 import type { NativeContextMenuItem } from '@/libs/contextMenu/types';
-import { sandboxStorageService } from '@/services/sandboxStorage';
 import { useAgentStore } from '@/store/agent';
 import { agentSelectors, chatConfigByIdSelectors } from '@/store/agent/selectors';
 import { useChatStore } from '@/store/chat';
 import { chatPortalSelectors, portalThreadSelectors, topicSelectors } from '@/store/chat/selectors';
 import { PortalViewType } from '@/store/chat/slices/portal/initialState';
 import { messageMapKey } from '@/store/chat/utils/messageMapKey';
-import {
-  deviceSelectors,
-  useDeviceStore,
-  useFetchGitBranch,
-  useFetchGitLinkedPR,
-} from '@/store/device';
+import { deviceSelectors, useDeviceStore } from '@/store/device';
 import { useElectronStore } from '@/store/electron';
 import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
+import { sandboxActions, sandboxSelectors, useSandboxStore } from '@/store/sandbox';
 
 import { type ComposerTarget, createComposerTarget, resolveThreadComposerTarget } from '../types';
 import Files from './Files';
@@ -95,6 +89,7 @@ import Overview from './Overview';
 import { getStatusDeviceId } from './Overview/overviewData';
 import OverviewSlot from './OverviewSlot';
 import PullRequest from './PullRequest';
+import { useLinkedPullRequest } from './PullRequest/useLinkedPullRequest';
 import ResourcesSection from './ResourcesSection';
 import Review from './Review';
 import WorkspaceTab from './WorkspaceTab';
@@ -399,15 +394,16 @@ const AgentWorkingSidebar = memo<AgentWorkingSidebarProps>(({ availableWidth }) 
   // Scoped to the bound instance's directory, or the workspace root when the
   // run keeps files without one. The empty string IS the root here, which is
   // why the tab's gate is the topic rather than a truthy path.
-  const { data: sandboxInstances } = useSWR(
-    isSandboxExecution && sandboxInstanceId ? ['sandbox-instance-dir', sandboxInstanceId] : null,
-    () => sandboxStorageService.getInstance({ id: sandboxInstanceId! }),
-  );
-  const sandboxDirectory = sandboxInstances?.workingDirectory ?? '';
+  // A replica, so a reload paints the directory (and the Files tab) from the
+  // last answer; `null` is an instance known to be gone.
+  const sandboxDirectoryId = isSandboxExecution ? sandboxInstanceId : undefined;
+  sandboxActions.useFetchInstanceDirectory(sandboxDirectoryId);
+  const sandboxDir = useSandboxStore(sandboxSelectors.instanceDirectory(sandboxDirectoryId));
+  const sandboxDirectory = sandboxDir ?? '';
   // The empty string IS the workspace root, so an unresolved instance does not
   // read as "no directory yet" — it reads as "the whole workspace", and the
   // tree would list every instance's folder for as long as the lookup took.
-  const sandboxDirectoryKnown = !sandboxInstanceId || sandboxInstances !== undefined;
+  const sandboxDirectoryKnown = !sandboxInstanceId || sandboxDir !== undefined;
 
   const filesystemEnvironmentAvailable = isLocalExecution || isDeviceMode;
   const environmentWorkingDirectory = filesystemEnvironmentAvailable ? workingDirectory : undefined;
@@ -443,24 +439,17 @@ const AgentWorkingSidebar = memo<AgentWorkingSidebarProps>(({ availableWidth }) 
   const isGithub =
     repoType === 'github' || (!repoType && !!snapshotConfig?.git?.github?.pullRequest);
   const gitPath = filesystemEnvironmentAvailable && isGithub ? workingDirectory : undefined;
-  const { data: branchData } = useFetchGitBranch(remoteDeviceId, gitPath);
-  const { data: linkedPR, mutate: refreshPullRequest } = useFetchGitLinkedPR(
-    remoteDeviceId,
+  const {
+    pullRequest,
+    refresh: refreshPullRequest,
+    ...pullRequestLink // confirmed, confirmError, onRetryConfirm
+  } = useLinkedPullRequest({
+    available: filesystemEnvironmentAvailable && !!workingDirectory,
+    deviceId: remoteDeviceId,
     gitPath,
-    branchData?.branch,
     isGithub,
-  );
-  const snapshotPR =
-    !branchData || (snapshotConfig?.git?.branch === branchData.branch && !branchData.detached)
-      ? snapshotConfig?.git?.github?.pullRequest
-      : undefined;
-  // A settled empty lookup supersedes the snapshot; failures may keep displaying it.
-  const pullRequest =
-    filesystemEnvironmentAvailable && workingDirectory
-      ? linkedPR?.pullRequestStatus === 'ok'
-        ? linkedPR.pullRequest
-        : (linkedPR?.pullRequest ?? snapshotPR)
-      : undefined;
+    snapshot: snapshotConfig?.git,
+  });
   const paramsAvailable = !isHetero;
   // The in-app browser pages are renderer-retained Electron webviews — desktop only.
   const browserAvailable = isDesktop;
@@ -1172,6 +1161,7 @@ const AgentWorkingSidebar = memo<AgentWorkingSidebarProps>(({ availableWidth }) 
                     <Flexbox className={styles.pane}>
                       <PullRequest
                         active={!!showRightPanel && activeTab === 'pr'}
+                        {...pullRequestLink}
                         deviceId={remoteDeviceId}
                         key={JSON.stringify([remoteDeviceId, workingDirectory, pullRequest.number])}
                         number={pullRequest.number}
