@@ -523,16 +523,6 @@ export const deviceKeys = {
     workspaceId,
     deviceId,
   ]),
-  gitAheadBehind: def('device:gitAheadBehind', (deviceId: string, path: string) => [
-    'device:gitAheadBehind',
-    deviceId,
-    path,
-  ]),
-  gitBranch: def('device:gitBranch', (deviceId: string, path: string) => [
-    'device:gitBranch',
-    deviceId,
-    path,
-  ]),
   gitBranches: def('device:gitBranches', (deviceId: string, path: string) => [
     'device:gitBranches',
     deviceId,
@@ -592,17 +582,6 @@ export const deviceKeys = {
       baseRef,
     ],
   ),
-  gitWorkingTreeStatus: def('device:gitWorkingTreeStatus', (deviceId: string, path: string) => [
-    'device:gitWorkingTreeStatus',
-    deviceId,
-    path,
-  ]),
-  gitWorktrees: def('device:gitWorktrees', (deviceId: string, path: string) => [
-    'device:gitWorktrees',
-    deviceId,
-    path,
-  ]),
-  listDevices: def('device:listDevices', () => ['device:listDevices']),
   repoType: def('device:repoType', (path: string) => ['device:repoType', path]),
 };
 
@@ -787,7 +766,7 @@ export const verifyKeys = {
   ),
   /**
    * One scroll page of the list panel. Keyed by workspace + the status split +
-   * the cursor, mirroring `reportSummaries` — the sibling paged feed.
+   * the cursor.
    */
   acceptancePurgePreview: def('verify:acceptancePurgePreview', (acceptanceId: string) => [
     'verify:acceptancePurgePreview',
@@ -821,23 +800,17 @@ export const verifyKeys = {
     'verify:reportBundle',
     verifyRunId,
   ]),
-  reportSummaries: def(
-    'verify:reportSummaries',
-    (workspaceId?: string | null, q?: string, cursor?: string) => [
-      'verify:reportSummaries',
-      workspaceId ?? '',
-      q ?? '',
-      cursor ?? '',
-    ],
-  ),
-  results: def('verify:results', (operationId: string) => ['verify:results', operationId]),
   rubric: def('verify:rubric', (rubricId: string) => ['verify:rubric', rubricId]),
+  /** The acceptance round an old `/verify/:runId` link redirects to. */
+  runAcceptanceRound: def('verify:runAcceptanceRound', (verifyRunId: string) => [
+    'verify:runAcceptanceRound',
+    verifyRunId,
+  ]),
   rubricCriteria: def('verify:rubricCriteria', (rubricId: string) => [
     'verify:rubricCriteria',
     rubricId,
   ]),
   rubrics: def('verify:rubrics', () => ['verify:rubrics']),
-  state: def('verify:state', (operationId: string) => ['verify:state', operationId]),
   tracing: def('verify:tracing', (tracingId: string) => ['verify:tracing', tracingId]),
 };
 
