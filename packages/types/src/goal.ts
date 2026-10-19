@@ -1,4 +1,5 @@
 import type { GoalReportDispatch, GoalReportState } from './goalReport';
+import type { GoalRolloutRetro, GoalRolloutVerifier } from './goalRetro';
 import type { InitialGoalOverviewContext } from './stepContext';
 import type { AcceptanceStatus, VerifyCheckTally } from './verify';
 import type { WorkType } from './work';
@@ -333,8 +334,12 @@ export interface GoalManagerState {
    * What kind of problem was handed over. `rollout_release`: a batch gate passed
    * and the main Agent decides whether the next wave goes out (`release`) or a
    * person approves it (`escalate`); no other answer applies to it.
+   * `rollout_revise`: the owner sent the batch plan back and the main Agent
+   * rewrites it (`revise_plan`). `rollout_distill`: a round's probes settled
+   * and the main Agent rewrites the plan from what they ran into
+   * (`revise_plan`) before the gate judges them.
    */
-  problemKind?: 'rollout_release' | 'rollout_revise';
+  problemKind?: 'rollout_distill' | 'rollout_release' | 'rollout_revise';
   /** The blocked task that problem belongs to, so accepting a plan that replaces
    *  it can retire exactly that node without parsing the key. */
   problemTaskId?: string;
@@ -514,7 +519,15 @@ export interface GoalRolloutPolicy {
  * why a gate passed or held, not only that it did.
  */
 export type GoalRolloutGateCheckKey =
-  'axes_covered' | 'no_open_decision' | 'plan_written' | 'units_settled' | 'units_succeeded';
+  | 'axes_covered'
+  /** Every person's intervention in the batch was accounted for by its retro. */
+  | 'interventions_accounted'
+  | 'no_open_decision'
+  | 'plan_written'
+  /** The batch's delivered units passed the verifier its retro produced. */
+  | 'reverified'
+  | 'units_settled'
+  | 'units_succeeded';
 
 export interface GoalRolloutGateCheck {
   /** For a count check: how many of `total` held, e.g. 5 of 5 units ran through. */
@@ -579,6 +592,11 @@ export type GoalRolloutPhase =
   | 'release_review'
   /** The owner sent the plan back; the main Agent is rewriting it for the owner to review again. */
   | 'plan_revision'
+  /**
+   * The round's probes settled; the main Agent rewrites the plan from them, and
+   * the gate judges them straight from here (`release_review` / `pattern_break`).
+   */
+  | 'plan_distill'
   | 'done';
 
 /**
@@ -685,6 +703,13 @@ export interface GoalRolloutState {
   /** The `batch` container node. */
   batchNodeId: string;
   /**
+   * The probe set the plan was last distilled from (see `probeSetKey`), or
+   * skipped for want of a main Agent turn. Set while still in `plan_distill`, it
+   * tells the gate the plan is ready to judge the probes on. Re-opened or re-run
+   * probes form a new set and are distilled again.
+   */
+  distilledProbes?: string;
+  /**
    * Gate verdicts, oldest first. Each round keeps its most recent few, so a
    * round that was judged never loses its latest verdict to later rounds.
    */
@@ -699,11 +724,28 @@ export interface GoalRolloutState {
    */
   massNodeIds?: string[];
   /**
-   * The owner's correction a sent-back release waits on, while the phase is
-   * `plan_revision`. The main Agent rewrites the plan from it (`revisedRecipe`);
-   * once it lands the rewrite returns to the owner's release review.
+   * The main Agent's plan rewritten from the settled probes, while the phase is
+   * `plan_distill`. The next advance lands it as the plan skill's next version
+   * and judges the gate in the same step.
    */
-  pendingRevision?: { correction: string; revisedReason?: string; revisedRecipe?: string };
+  pendingDistill?: { reason: string; recipe: string };
+  /**
+   * The owner's correction a sent-back release waits on, while the phase is
+   * `plan_revision`. The main Agent rewrites the plan from it (`revisedRecipe`)
+   * and names the delivered units the correction covers (`rerun`). Those units
+   * run again on the rewrite as a new round of experiments before the owner
+   * reviews it; with none to re-run, the rewrite returns to the review at once.
+   */
+  pendingRevision?: {
+    correction: string;
+    /**
+     * Node ids (or titles) of the reviewed round's units to run again on the
+     * rewrite. Absent re-runs every one of them; empty re-runs none.
+     */
+    rerun?: string[];
+    revisedReason?: string;
+    revisedRecipe?: string;
+  };
   /** Phase the rollout is in; the coordinator reads this to pick its move. */
   phase: GoalRolloutPhase;
   /** The execution plan as a user skill; each Template revision is one of its versions. */
@@ -728,6 +770,8 @@ export interface GoalRolloutState {
   releaseGateAcceptanceId?: string;
   /** The decision node a held release waits on, while the phase is `release_review`. */
   releaseReviewNodeId?: string;
+  /** One retro per execution — the probes, then each roster wave — oldest first. */
+  retros?: GoalRolloutRetro[];
   /** Node id of the current Template (finding) node. */
   templateNodeId?: string;
   /** Current Template revision; incremented each time the recipe is revised. */
@@ -740,6 +784,8 @@ export interface GoalRolloutState {
    * delivered under the old recipe drop out.
    */
   unitTitles?: string[];
+  /** The batch's verifier, once a retro produced one. */
+  verifier?: GoalRolloutVerifier;
   /** How many mass waves have been released. */
   waveIndex: number;
   /** Roster waves released so far across every round; `waveIndex` restarts per round. */
@@ -888,6 +934,12 @@ export type GoalDecisionStatus = 'pending' | 'resolved' | 'canceled';
 export type GoalDecisionOptionEffect = 'retry' | 'retire';
 
 export interface GoalDecisionOption {
+  /**
+   * The unfinished tasks a `retire` effect takes along, because they depend on
+   * the retired one. It is what the person confirms: answering is refused when
+   * the set changed since. Data, not copy: the reader's client words it.
+   */
+  alsoRetires?: { nodeId: string; title: string }[];
   /** The consequence of choosing this option, in the words the person reads. */
   description?: string;
   effect?: GoalDecisionOptionEffect;
