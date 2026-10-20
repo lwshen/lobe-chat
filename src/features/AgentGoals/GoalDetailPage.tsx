@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 
 import NotFound from '@/components/404';
-import AsyncError from '@/components/AsyncError';
 import ConversationSkeleton from '@/components/Skeleton/Conversation/List';
 import GoalDetailSkeleton from '@/components/Skeleton/GoalDetail';
 import AgentBreadcrumb from '@/features/AgentBreadcrumb';
@@ -18,6 +17,8 @@ import { usePortalPanelWidth } from '@/features/Portal/usePortalPanelWidth';
 import RightPanel from '@/features/RightPanel';
 import { useWorkspaceSidePanel } from '@/features/RightPanel/WorkspaceSidePanel';
 import WideScreenContainer from '@/features/WideScreenContainer';
+import OtherScopeAsyncError from '@/features/Workspace/OtherScopeAsyncError';
+import { type ScopedLambdaClient } from '@/features/Workspace/useLocateInOtherScope';
 import { usePermission } from '@/hooks/usePermission';
 import { useResourceManageable } from '@/hooks/useResourceManageable';
 import { useChatStore } from '@/store/chat';
@@ -26,6 +27,7 @@ import { useGlobalStore } from '@/store/global';
 import { systemStatusSelectors } from '@/store/global/selectors';
 import { goalSelectors, useGoalStore } from '@/store/goal';
 
+import GoalAgentModelConfig from './GoalAgentModelConfig';
 import GoalChat from './GoalChat';
 import { GoalConversationContext } from './goalConversation';
 import GoalDetailActions from './GoalDetailActions';
@@ -34,6 +36,7 @@ import { goalManagerConversation } from './goalPresentation';
 import GoalRequirement from './GoalRequirement';
 import { GoalSupervision } from './GoalSupervision';
 import GoalSupervisorToggle from './GoalSupervisorToggle';
+import GoalWorkspaceBreadcrumb from './GoalWorkspaceBreadcrumb';
 import NorthStarMetrics from './NorthStarMetrics';
 import ProcessControl from './ProcessControl';
 import { useGoalChatPanel } from './useGoalChatPanel';
@@ -54,6 +57,10 @@ const styles = createStaticStyles(({ css }) => ({
   `,
 }));
 
+/** A goal 404s outside its own scope; reading it through another scope tells where it lives. */
+const probeGoalGraph = (client: ScopedLambdaClient, id: string, signal: AbortSignal) =>
+  client.goal.graph.query({ id }, { context: { showNotification: false }, signal });
+
 interface GoalDetailPageProps {
   /** Absent for a goal with no responsible agent — e.g. one created from a project. */
   agentId?: string;
@@ -65,7 +72,7 @@ const AWAIT_RECORD_TIMEOUT = 10_000;
 
 const GoalDetailPage = memo<GoalDetailPageProps>(({ agentId, goalId }) => {
   const { t } = useTranslation('chat');
-  const { allowed: canEdit } = usePermission('create_content');
+  const { allowed: canEdit, reason: editBlockedReason } = usePermission('create_content');
   const useFetchGoalGraph = useGoalStore((s) => s.useFetchGoalGraph);
   const { error, isLoading, mutate } = useFetchGoalGraph(goalId);
   const snapshot = useGoalStore(goalSelectors.goalGraph(goalId));
@@ -155,7 +162,19 @@ const GoalDetailPage = memo<GoalDetailPageProps>(({ agentId, goalId }) => {
   // page (or switching goals) must not leak it into the conversation surface.
   useEffect(() => () => clearPortalStack(), [clearPortalStack, goalId]);
 
-  if (error && !snapshot) return <AsyncError error={error} variant={'page'} onRetry={mutate} />;
+  if (error && !snapshot)
+    return (
+      <OtherScopeAsyncError
+        error={error}
+        pendingFallback={<GoalDetailSkeleton />}
+        resourceKey={`goal:${goalId}`}
+        variant={'page'}
+        probe={(client: ScopedLambdaClient, signal: AbortSignal) =>
+          probeGoalGraph(client, goalId, signal)
+        }
+        onRetry={mutate}
+      />
+    );
   if (!snapshot)
     return isLoading ? (
       <GoalDetailSkeleton />
@@ -248,9 +267,7 @@ const GoalDetailPage = memo<GoalDetailPageProps>(({ agentId, goalId }) => {
                     title={<Link to={buildAgentPath('goals')}>{t('goalList.title')}</Link>}
                   />
                 ) : (
-                  <Text fontSize={14} weight={500}>
-                    {goal.title}
-                  </Text>
+                  <GoalWorkspaceBreadcrumb title={goal.title} />
                 )}
                 {/* Not nested under the breadcrumb: an agent-less goal still has to
                   be deletable, and this menu is the only place that can do it. */}
@@ -287,9 +304,12 @@ const GoalDetailPage = memo<GoalDetailPageProps>(({ agentId, goalId }) => {
                   button is only the control. */}
                 {/* A draft is still being arranged: nothing has been dispatched,
                   and starting it is the one explicit move into running. */}
-                {goal.status === 'draft' && (
-                  <Flexbox horizontal align={'center'} gap={10} paddingBlock={'8px 0'}>
-                    {canEdit && canStart && (
+                <Flexbox horizontal align={'center'} gap={10} paddingBlock={'8px 0'} wrap={'wrap'}>
+                  {/* One control at a time: a draft is started, a moving goal is
+                      paused or resumed — the two states never overlap. */}
+                  {goal.status === 'draft' ? (
+                    canEdit &&
+                    canStart && (
                       <Button
                         icon={PlayIcon}
                         loading={starting}
@@ -307,14 +327,8 @@ const GoalDetailPage = memo<GoalDetailPageProps>(({ agentId, goalId }) => {
                       >
                         {t('goalProcess.start')}
                       </Button>
-                    )}
-                    <Text fontSize={12} type={'secondary'}>
-                      {t('goalProcess.draft')}
-                    </Text>
-                  </Flexbox>
-                )}
-                {canPause && (
-                  <Flexbox horizontal align={'center'} gap={10} paddingBlock={'8px 0'}>
+                    )
+                  ) : canPause ? (
                     <Button
                       icon={paused ? PlayIcon : PauseIcon}
                       type={paused ? 'primary' : 'default'}
@@ -322,13 +336,24 @@ const GoalDetailPage = memo<GoalDetailPageProps>(({ agentId, goalId }) => {
                     >
                       {paused ? t('goalProcess.resume') : t('goalProcess.pause')}
                     </Button>
-                    {paused && (
-                      <Text fontSize={12} type={'secondary'}>
-                        {t('goalProcess.paused')}
-                      </Text>
-                    )}
-                  </Flexbox>
-                )}
+                  ) : null}
+                  {/* Who plans the goal and who does its Tasks, next to the control
+                      that starts or pauses that work. Also the way to give an
+                      agent-less goal its main agent. */}
+                  <GoalAgentModelConfig
+                    disabled={!canEdit || !canStart}
+                    goalId={goal.id}
+                    routeAgentId={agentId}
+                    disabledReason={
+                      canEdit ? t('goalDetail.agentManagedByOwner') : editBlockedReason
+                    }
+                  />
+                  {goal.status === 'draft' && (
+                    <Text fontSize={12} type={'secondary'}>
+                      {t('goalProcess.draft')}
+                    </Text>
+                  )}
+                </Flexbox>
                 {goal.requirement && (
                   <GoalRequirement goalId={goal.id} requirement={goal.requirement} />
                 )}
