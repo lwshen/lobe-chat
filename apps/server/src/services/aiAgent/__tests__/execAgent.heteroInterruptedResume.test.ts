@@ -1,4 +1,3 @@
-import type { ContextSelection } from '@lobechat/types';
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest';
 
 import { AgentOperationModel } from '@/database/models/agentOperation';
@@ -9,6 +8,7 @@ import { AiAgentService } from '../index';
 const {
   mockDeviceFindByDeviceId,
   mockDeviceFindWorkspaceDeviceById,
+  mockGetFullFileUrl,
   mockBuildRemoteDeviceHeteroContext,
   mockCreateOperationMetadata,
   mockDispatchAgentRun,
@@ -28,6 +28,7 @@ const {
   mockCreateOperationMetadata: vi.fn().mockResolvedValue(undefined),
   mockDeviceFindByDeviceId: vi.fn(),
   mockDeviceFindWorkspaceDeviceById: vi.fn(),
+  mockGetFullFileUrl: vi.fn(async (url: string) => `https://signed.example/${url}`),
   mockDispatchAgentRun: vi.fn().mockResolvedValue({ success: true }),
   mockExecuteToolCall: vi.fn().mockResolvedValue({ success: true }),
   mockInterruptOperation: vi.fn().mockResolvedValue(true),
@@ -72,7 +73,7 @@ const emptyResolvedAttachments = {
 
 vi.mock('@/server/services/file', () => ({
   FileService: vi.fn().mockImplementation(function () {
-    return {};
+    return { getFullFileUrl: mockGetFullFileUrl };
   }),
 }));
 
@@ -253,21 +254,14 @@ vi.mock('@/server/services/heterogeneousAgent/remoteDeviceHeteroContext', () => 
   buildRemoteDeviceHeteroContext: mockBuildRemoteDeviceHeteroContext,
 }));
 
-describe('AiAgentService.execAgent - hetero runs keep the selections attached to the message', () => {
+/**
+ * The user stops a run before the CLI records the prompt, then sends a
+ * correction. The next turn resumes the native session, which never saw the
+ * stopped prompt, so the system context must carry it.
+ */
+describe('AiAgentService.execAgent - hetero resume after a stopped run', () => {
   let service: AiAgentService;
   const spies: MockInstance[] = [];
-
-  const contextSelections: ContextSelection[] = [
-    {
-      content: 'The quoted reply the user picked from the conversation',
-      format: 'text',
-      id: 'selection-1',
-      source: 'text',
-    },
-  ];
-
-  const userMessageCreate = () =>
-    mockMessageCreate.mock.calls.find(([params]) => params.role === 'user')?.[0];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -278,17 +272,18 @@ describe('AiAgentService.execAgent - hetero runs keep the selections attached to
     topicMock.create.mockResolvedValue({ id: 'topic-1', metadata: undefined });
     topicMock.findById.mockResolvedValue(undefined);
     mockMessageCreate.mockResolvedValue({ id: 'msg-1' });
-    mockMessageQuery.mockResolvedValue([]);
     mockResolveAttachmentsByFileIds.mockResolvedValue({ ...emptyResolvedAttachments });
-    mockGetHeterogeneousResumeSessionId.mockResolvedValue(undefined);
+    mockGetHeterogeneousResumeSessionId.mockResolvedValue('native-session-existing');
     mockBuildRemoteDeviceHeteroContext.mockReturnValue('device context');
     mockDeviceFindByDeviceId.mockResolvedValue({ defaultCwd: '/Users/alice/repo' });
     mockDeviceFindWorkspaceDeviceById.mockResolvedValue(undefined);
-    heteroAgentConfig.agencyConfig = {
-      boundDeviceId: 'device-1',
-      executionTarget: 'device',
-      heterogeneousProvider: { systemContext: 'Agent rules', type: 'claude-code' },
-    } as any;
+    mockMessageQuery.mockResolvedValue([
+      { content: 'hi', id: 'old-user', role: 'user' },
+      { content: 'Hi! What should we work on?', id: 'old-assistant', role: 'assistant' },
+      { content: 'Clone the mobile repo into this project', id: 'stopped-user', role: 'user' },
+      { content: '', id: 'stopped-assistant', role: 'assistant' },
+      { content: 'Sorry, I meant into this directory', id: 'msg-1', role: 'user' },
+    ]);
 
     service = new AiAgentService({} as any, 'test-user-id');
   });
@@ -297,56 +292,94 @@ describe('AiAgentService.execAgent - hetero runs keep the selections attached to
     for (const spy of spies.splice(0)) spy.mockRestore();
   });
 
-  it('persists the selections on the user message so the quote survives the server rows', async () => {
-    await service.execAgent({
-      agentId: 'agent-1',
-      contextSelections,
-      prompt: 'Explain this',
-    });
+  it('re-delivers the stopped prompt to a resumed device session', async () => {
+    heteroAgentConfig.agencyConfig = {
+      boundDeviceId: 'device-1',
+      executionTarget: 'device',
+      heterogeneousProvider: { type: 'claude-code' },
+    } as any;
 
-    expect(userMessageCreate()?.metadata).toMatchObject({ contextSelections });
-  });
+    await service.execAgent({ agentId: 'agent-1', prompt: 'Sorry, I meant into this directory' });
 
-  it('hands the selections to the device run system context', async () => {
-    await service.execAgent({
-      agentId: 'agent-1',
-      contextSelections,
-      prompt: 'Explain this',
-    });
-
-    const { agentSystemContext } = mockBuildRemoteDeviceHeteroContext.mock.calls[0][0];
-    expect(agentSystemContext).toMatch(/^Agent rules\n\n<user_context_selections count="1">/);
-    expect(agentSystemContext).toContain('The quoted reply the user picked from the conversation');
-  });
-
-  it('falls back to page selections when only those are attached', async () => {
-    await service.execAgent({
-      agentId: 'agent-1',
-      pageSelections: [
-        {
-          content: 'Selected page paragraph',
-          id: 'page-selection-1',
-          pageId: 'page-1',
-          xml: '<p>Selected page paragraph</p>',
-        },
-      ],
-      prompt: 'Explain this',
-    });
-
-    expect(userMessageCreate()?.metadata).toMatchObject({
-      pageSelections: [expect.objectContaining({ pageId: 'page-1' })],
-    });
-    expect(mockBuildRemoteDeviceHeteroContext.mock.calls[0][0].agentSystemContext).toContain(
-      'Selected page paragraph',
+    expect(mockDispatchAgentRun).toHaveBeenCalledWith(
+      expect.objectContaining({ resumeSessionId: 'native-session-existing' }),
     );
+    expect(mockBuildRemoteDeviceHeteroContext).toHaveBeenNthCalledWith(1, {
+      agentSystemContext: undefined,
+      unansweredUserTurns: [{ content: 'Clone the mobile repo into this project', files: [] }],
+    });
   });
 
-  it('leaves the message and system context alone when nothing is attached', async () => {
-    await service.execAgent({ agentId: 'agent-1', prompt: 'Explain this' });
+  it('re-delivers the stopped prompt to a resumed cloud sandbox session', async () => {
+    heteroAgentConfig.agencyConfig = {
+      executionTarget: 'sandbox',
+      heterogeneousProvider: { type: 'claude-code' },
+    } as any;
 
-    expect(userMessageCreate()?.metadata).not.toHaveProperty('contextSelections');
-    expect(mockBuildRemoteDeviceHeteroContext.mock.calls[0][0].agentSystemContext).toBe(
-      'Agent rules',
-    );
+    await service.execAgent({ agentId: 'agent-1', prompt: 'Sorry, I meant into this directory' });
+
+    const { resumeFallbackSystemContext, resumeSessionId, systemContext } =
+      mockSpawnHeteroSandbox.mock.calls[0][0];
+    expect(resumeSessionId).toBe('native-session-existing');
+    expect(systemContext).toContain('<unanswered_user_messages>');
+    expect(systemContext).toContain('Clone the mobile repo into this project');
+    expect(systemContext).not.toContain('Hi! What should we work on?');
+    expect(systemContext).not.toContain('<previous_conversation>');
+    // The fresh-session fallback already carries the full history.
+    expect(resumeFallbackSystemContext).toContain('Clone the mobile repo into this project');
+    expect(resumeFallbackSystemContext).not.toContain('<unanswered_user_messages>');
+  });
+
+  it('re-delivers the attachments of the stopped turn with signed links', async () => {
+    heteroAgentConfig.agencyConfig = {
+      boundDeviceId: 'device-1',
+      executionTarget: 'device',
+      heterogeneousProvider: { type: 'claude-code' },
+    } as any;
+    mockMessageQuery.mockResolvedValue([
+      {
+        content: 'Summarize this spec',
+        fileList: [
+          { fileType: 'application/pdf', name: 'spec.pdf', size: 2048, url: 'files/spec.pdf' },
+        ],
+        id: 'stopped-user',
+        role: 'user',
+      },
+      { content: '', id: 'stopped-assistant', role: 'assistant' },
+      { content: 'Only the first section', id: 'msg-1', role: 'user' },
+    ]);
+
+    await service.execAgent({ agentId: 'agent-1', prompt: 'Only the first section' });
+
+    expect(mockBuildRemoteDeviceHeteroContext.mock.calls[0][0].unansweredUserTurns).toEqual([
+      {
+        content: 'Summarize this spec',
+        files: [
+          {
+            fileType: 'application/pdf',
+            name: 'spec.pdf',
+            size: 2048,
+            url: 'https://signed.example/files/spec.pdf',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('adds nothing once the previous run answered', async () => {
+    heteroAgentConfig.agencyConfig = {
+      boundDeviceId: 'device-1',
+      executionTarget: 'device',
+      heterogeneousProvider: { type: 'claude-code' },
+    } as any;
+    mockMessageQuery.mockResolvedValue([
+      { content: 'Clone the repo', id: 'old-user', role: 'user' },
+      { content: 'Cloned.', id: 'old-assistant', role: 'assistant' },
+      { content: 'Now install deps', id: 'msg-1', role: 'user' },
+    ]);
+
+    await service.execAgent({ agentId: 'agent-1', prompt: 'Now install deps' });
+
+    expect(mockBuildRemoteDeviceHeteroContext.mock.calls[0][0].unansweredUserTurns).toBeUndefined();
   });
 });
