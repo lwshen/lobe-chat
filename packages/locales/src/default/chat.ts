@@ -1,4 +1,9 @@
 export default {
+  'sharePage.app.open': 'Open app',
+  'sharePage.app.help': 'Trouble opening the app?',
+  'sharePage.app.helpDescription':
+    'If this browser prevents opening the app, use its menu to open this page in your system browser. You can also keep reading here.',
+
   'backgroundActivity.alertDesc': '{{name}} is using {{memory}} of memory and {{cpu}} CPU.',
   'backgroundActivity.cpu': 'CPU',
   'backgroundActivity.details': 'View details',
@@ -337,6 +342,9 @@ export default {
     'Are you sure you want to uncompress? This will restore the original messages.',
   'compression.collapsed': 'Compressed {{turns}} earlier turns · View summary',
   'compression.collapsedUnknown': 'Compressed earlier history · View summary',
+  'compression.emptySummary': 'The model returned an empty summary',
+  'compression.failed': 'Context compression failed, original messages kept',
+  'compression.failedReason': 'Summary generation failed: {{reason}}',
   'compression.history': 'Original conversation',
   'compression.summary': 'History summary',
   'confirmClearCurrentMessages':
@@ -1441,6 +1449,7 @@ export default {
   'opStatusTray.status.toolCalling': 'Calling tools',
   'opStatusTray.cost': 'cost',
   'opStatusTray.steps': 'steps',
+  'opStatusTray.llmCalls': 'LLM calls',
   'opStatusTray.tokens': 'tokens',
 
   // Connect Agent wizard (device-first): pick a machine, auto-scan the agents
@@ -1868,6 +1877,8 @@ export default {
   'stt.action': 'Voice Input',
   'stt.loading': 'Recognizing...',
   'stt.prettifying': 'Polishing...',
+  'subAgentCallback.failed': 'Did not finish',
+  'subAgentCallback.tag': 'Sub-agent',
   'supervisor.label': 'Orchestrator',
   'supervisor.todoList.allComplete': 'All tasks completed',
   'supervisor.todoList.title': 'Tasks Completed',
@@ -1891,6 +1902,7 @@ export default {
   'task.intermediateSteps': '{{count}} intermediate steps',
   'task.metrics.duration': '(took {{duration}})',
   'task.metrics.stepsShort': 'steps',
+  'task.metrics.llmCallsShort': 'LLM calls',
   'task.metrics.toolCallsShort': 'skill uses',
   'task.status.cancelled': 'Task Cancelled',
   'task.status.failed': 'Task Failed',
@@ -2422,14 +2434,11 @@ export default {
   'goalProcess.acceptanceHierarchy.acceptAllTitle': 'Accept every waiting acceptance?',
   'goalProcess.acceptanceHierarchy.acceptError': 'Could not save the sign-off. Try again.',
   'goalProcess.acceptanceHierarchy.accepted': 'Accepted “{{title}}”',
-  'goalProcess.acceptanceHierarchy.checksError': 'Failed to load this acceptance’s checks',
-  'goalProcess.acceptanceHierarchy.collapseAll': 'Collapse all',
   'goalProcess.acceptanceHierarchy.criterion.failed': 'Failed',
   'goalProcess.acceptanceHierarchy.criterion.passed': 'Passed',
   'goalProcess.acceptanceHierarchy.criterion.unjudged': 'Undecided',
   'goalProcess.acceptanceHierarchy.error':
     'Failed to load the acceptance levels, so no level’s standing can be read.',
-  'goalProcess.acceptanceHierarchy.expandAll': 'Expand all',
   'goalProcess.acceptanceHierarchy.group': 'Related acceptances',
   'goalProcess.acceptanceHierarchy.level.awaitingSignOff': 'Awaiting your sign-off',
   'goalProcess.acceptanceHierarchy.level.closed': 'Closed',
@@ -2437,8 +2446,6 @@ export default {
   'goalProcess.acceptanceHierarchy.level.rejected': 'Sent back',
   'goalProcess.acceptanceHierarchy.level.signedOff': 'Signed off',
   'goalProcess.acceptanceHierarchy.level.unavailable': 'No acceptance',
-  'goalProcess.acceptanceHierarchy.noChecks': 'This acceptance has no checks yet',
-  'goalProcess.acceptanceHierarchy.retry': 'Reload',
   'goalProcess.acceptanceHierarchy.tally.failed': '{{count}} failed',
   'goalProcess.acceptanceHierarchy.tally.passed': '{{count}} passed',
   'goalProcess.acceptanceHierarchy.tally.unjudged': '{{count}} undecided',
@@ -2518,7 +2525,8 @@ export default {
   'goalProcess.acceptance.errored': 'Verification error',
   'goalProcess.acceptance.rejected': 'Rejected',
   'goalProcess.tag.verifying': 'Verifying',
-  'goalProcess.tag.lost': 'Lost',
+  'goalProcess.tag.stalled': 'Stalled',
+  'goalProcess.tag.waitingQuota': 'Waiting for quota',
   'goalProcess.tag.done': 'Done',
   'goalProcess.tag.retired': 'Retired',
   'goalProcess.gate.decisionPointLabel': 'What needs your decision',
@@ -2540,10 +2548,14 @@ export default {
   'goalProcess.gate.reason.verifyInternalError':
     'Verification could not run (internal error); this delivery was not evaluated',
   'goalProcess.gate.reason.verifyFailed': 'Task {{id}} did not pass verification',
+  'goalProcess.gate.reason.verifyStalled':
+    'Task {{id}} failed verification the same way {{count}} times in a row, so it was not retried again',
   'goalProcess.gate.reason.goalAcceptanceFailed': 'Goal-level acceptance did not pass',
   'goalProcess.gate.reason.attemptBudgetExhausted': 'The attempt budget for this work is used up',
   'goalProcess.gate.reason.costBudgetExhausted': 'The goal cost budget is used up',
   'goalProcess.gate.reason.recoveryFailed': 'Automatic recovery could not start the next attempt',
+  'goalProcess.gate.reason.recoveryFailedWithError':
+    'Automatic recovery could not start the next attempt: {{error}}',
   'goalProcess.gate.reason.batchReleaseProbes':
     'The v{{revision}} experiments finished; start batch execution with wave {{wave}} ({{count}} units)',
   'goalProcess.gate.reason.batchReleaseRevised':
@@ -2650,8 +2662,12 @@ export default {
   'goalProcess.attempts.failed': 'Did not pass',
   'goalProcess.attempts.retired': 'Retired',
   'goalProcess.attempts.running': 'Running',
-  'goalProcess.stale.description':
-    'No heartbeat for {{duration}}. The next advance marks this attempt lost and starts a fresh one — it does not count as a failure.',
+  'goalProcess.stalled.description':
+    'Last heartbeat {{duration}}. The next advance restarts this attempt — it does not count as a failure.',
+  'goalProcess.quota.resumeAt': 'Resumes {{time}}',
+  'goalProcess.quota.resumeSoon': 'Resuming soon',
+  'goalProcess.quota.tooltip':
+    'The usage limit was reached. The goal resumes this task on its own once the quota resets — it does not count as a failure.',
   'goalProcess.running.elapsed': 'Running {{duration}}',
   'goalProcess.graph.title': 'Exploration map',
   'goalProcess.graph.view.stage': 'Current stage',
@@ -2671,7 +2687,6 @@ export default {
   'goalProcess.result.continueSeed.open': 'Still open:',
   'goalProcess.result.continueSeed.requirement': 'Original requirement:',
   'goalProcess.result.continueSeed.title': 'Continue: {{title}}',
-  'goalProcess.result.criteria.document': 'Evidence document',
   'goalProcess.result.criteria.empty': 'This Goal has no structured acceptance criteria.',
   'goalProcess.result.criteria.evidenceCount': '{{count}} evidence',
   'goalProcess.result.criteria.state.failed': 'Not met',
@@ -2901,6 +2916,16 @@ export default {
   'goalProcess.node.artifactsTooltip':
     '{{count}} work versions registered. Opening them needs a server read that does not exist yet.',
   'goalProcess.node.humanTouched': 'You took part in this task',
+  'goalProcess.decisions.title': 'Decisions',
+  'goalProcess.decisions.empty': 'No decision has been asked on this goal yet.',
+  'goalProcess.decisions.pending': 'Awaiting decision',
+  'goalProcess.decisions.chosen': 'Chosen',
+  'goalProcess.decisions.openNode': 'Open this decision',
+  'goalProcess.decisions.recommended': 'Recommended',
+  'goalProcess.decisions.raisedBy': 'Raised by',
+  'goalProcess.decisions.effect.fail': 'Fails the goal',
+  'goalProcess.decisions.effect.retire': 'Retires the task',
+  'goalProcess.decisions.effect.retry': 'Runs the task again',
   'goalProcess.findings.title': 'Findings',
   'goalProcess.findings.empty': 'No findings yet.',
   'goalProcess.findings.answers': 'Answers “{{title}}”',
@@ -3146,7 +3171,8 @@ export default {
   'tool.intervention.mode.autoRun': 'Auto Approve',
   'tool.intervention.mode.autoRunDesc': 'Automatically approve all tool executions',
   'tool.intervention.mode.manual': 'Manual',
-  'tool.intervention.mode.manualDesc': 'Manual approval required for each invocation',
+  'tool.intervention.mode.manualDesc':
+    'Asks before each invocation, except actions you chose not to be asked about again',
   'tool.intervention.onboarding.agentIdentity.editHint':
     'You can edit the name or avatar directly below.',
   'tool.intervention.onboarding.agentIdentity.namePlaceholder': 'Agent name',
@@ -3583,7 +3609,7 @@ export default {
   'workingPanel.works.emptyVersions': 'No versions yet',
   'workingPanel.works.error': 'Failed to load works',
   'workingPanel.works.documentLoadError': 'Failed to load document',
-  'workingPanel.works.canvasPublished': 'Published',
+  'workingPanel.works.canvasShared': 'Shared',
   'workingPanel.works.canvasUntitled': 'Untitled canvas',
   'workingPanel.works.changeType.created': 'Created',
   'workingPanel.works.changeType.updated': 'Updated',
@@ -3808,11 +3834,25 @@ export default {
   'workingPanel.files.showInReview': 'Show in Review',
   'workingPanel.files.showInSystem': 'Reveal in Folder',
   'workingPanel.files.title': 'Files',
+  'workingPanel.search.empty': 'No messages contain "{{keyword}}"',
+  'workingPanel.search.error': 'Search failed. Try again.',
+  'workingPanel.search.hint':
+    'Searches every message in this topic, including earlier history that is not loaded yet.',
+  'workingPanel.search.limitReached':
+    'Showing the first {{count}} messages. Use a more specific keyword to narrow it down.',
+  'workingPanel.search.next': 'Next match',
+  'workingPanel.search.placeholder': 'Find in this topic',
+  'workingPanel.search.prev': 'Previous match',
+  'workingPanel.search.resultCount_one': '{{count}} message',
+  'workingPanel.search.resultCount_other': '{{count}} messages',
+  'workingPanel.search.retry': 'Retry',
+  'workingPanel.search.role.assistant': 'Assistant',
+  'workingPanel.search.role.user': 'You',
+  'workingPanel.search.title': 'Search',
   'workingPanel.files.truncatedNotice':
     'Some expanded folders are too large to list fully — only the first entries are shown',
   'workingPanel.files.views.changes': 'Git Changes',
   'workingPanel.files.views.project': 'Project',
-  'workingPanel.files.views.title': 'File View',
   'workingPanel.pr.action.arming': 'Arming auto-merge…',
   'workingPanel.pr.action.autoMerge': 'Auto-merge when ready',
   'workingPanel.pr.action.bypassSuffix': 'bypass rules',

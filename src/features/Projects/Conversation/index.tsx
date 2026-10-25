@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Navigate, useParams, useSearchParams } from 'react-router';
 
 import AsyncError from '@/components/AsyncError';
+import ConversationSegmentSkeleton from '@/components/Skeleton/Conversation/Segment';
 import TopicActions from '@/features/AgentSidebar/Topic/List/Item/Actions';
 import ConversationWorkspace from '@/features/Conversation/Workspace';
 import NavHeader from '@/features/NavHeader';
@@ -24,8 +25,9 @@ import {
   useProjectTopics,
 } from '@/store/projectWorkingDirectory';
 
-import { getProjectConversationPath } from '../Layout/navigation';
+import { getProjectTopicPath } from '../Layout/navigation';
 import { freshProjectTopicAgentId } from './freshProjectTopicAgentId';
+import { projectConversationStage } from './projectConversationStage';
 import { useMarkProjectTopicRead } from './useMarkProjectTopicRead';
 import { useProjectDraftStaging } from './useProjectDraftStaging';
 import { useRevalidateWhileUnlisted } from './useRevalidateWhileUnlisted';
@@ -105,12 +107,9 @@ const ProjectConversation = memo(() => {
     );
   }, [conversationAgentId]);
 
-  const getConversationPath = useCallback(
-    () => getProjectConversationPath(projectSlug!),
-    [projectSlug],
-  );
+  const getConversationPath = useCallback(() => getProjectTopicPath(projectSlug!), [projectSlug]);
   const getTopicPath = useCallback(
-    (_agentId: string, topicId: string) => getProjectConversationPath(projectSlug!, topicId),
+    (_agentId: string, topicId: string) => getProjectTopicPath(projectSlug!, topicId),
     [projectSlug],
   );
 
@@ -142,13 +141,13 @@ const ProjectConversation = memo(() => {
   if (detailSWR.error && !detail) {
     return <AsyncError error={detailSWR.error} variant="page" onRetry={detailSWR.revalidate} />;
   }
-  if (
-    !detail ||
-    !conversationAgentId ||
-    agent.isLoading ||
-    (!storedTopic && topicDetail.isValidating) ||
-    chatAgentId !== conversationAgentId
-  ) {
+  const stage = projectConversationStage({
+    agentConfigLoading: !!agent.isLoading,
+    chatAgentId,
+    conversationAgentId,
+    hasProject: !!detail,
+  });
+  if (stage === 'loading') {
     return (
       <Center height="100%" width="100%">
         <Spin size="small" />
@@ -184,15 +183,23 @@ const ProjectConversation = memo(() => {
         />
       }
     >
-      <ChatHydration getConversationPath={getConversationPath} getTopicPath={getTopicPath} />
-      <Flexbox
-        flex={1}
-        style={{ minHeight: 0, minWidth: 0 }}
-        onFocusCapture={restageDraft}
-        onPointerDownCapture={restageDraft}
-      >
-        <ChatConversation />
-      </Flexbox>
+      {stage === 'ready' ? (
+        <>
+          <ChatHydration getConversationPath={getConversationPath} getTopicPath={getTopicPath} />
+          <Flexbox
+            flex={1}
+            style={{ minHeight: 0, minWidth: 0 }}
+            onFocusCapture={restageDraft}
+            onPointerDownCapture={restageDraft}
+          >
+            <ChatConversation />
+          </Flexbox>
+        </>
+      ) : (
+        // Not delayed: the header is already on screen, and a blank column
+        // reads as the composer blinking out.
+        <ConversationSegmentSkeleton />
+      )}
     </ConversationWorkspace>
   );
 });

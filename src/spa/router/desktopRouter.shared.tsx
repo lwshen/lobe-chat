@@ -63,8 +63,8 @@ import { activityListLoader } from '@/spa/router/activityListLoader';
 import { agentChatTopicListLoader } from '@/spa/router/agentChatTopicListLoader';
 import { agentDocumentListLoader } from '@/spa/router/agentDocumentListLoader';
 import { channelDataLoader } from '@/spa/router/channelDataLoader';
-import { contextListLoader } from '@/spa/router/contextListLoader';
 import { identitiesListLoader } from '@/spa/router/identitiesListLoader';
+import { onboardingRoute } from '@/spa/router/onboardingRoute';
 import { pageListLoader } from '@/spa/router/pageListLoader';
 import { preferenceListLoader } from '@/spa/router/preferenceListLoader';
 import { projectWorkspaceRoute } from '@/spa/router/projectWorkspaceRoutes';
@@ -652,8 +652,6 @@ export const sharedMainAreaChildren: RouteObject[] = [
         handle: {
           meta: routeMeta({ icon: BrainCircuit, titleKey: 'navigation.memoryContexts' }),
         },
-        // Seed the persisted head page before the page paints (see `contextListLoader`).
-        loader: contextListLoader,
         path: 'contexts',
       },
       {
@@ -1208,18 +1206,16 @@ export const createMainAreaRouteFactory = (options: MainAreaRouteOptions = {}) =
 
 export interface SharedDesktopRouteOptions {
   mainAreaChildren: RouteObject[];
-  onboardingRoute: RouteObject;
-  /** Routes that intentionally exist on only one runtime, such as Web `/verify-im`. */
+  /** Runtime-only routes, such as Web `/verify-im` or Electron `/desktop-onboarding`. */
   platformRoutes?: RouteObject[];
 }
 
 /**
  * Builds the common Web/Electron top-level route tree. Platform entry files
- * supply only the root children, runtime-only routes, and onboarding route.
+ * supply only the root children and runtime-only routes.
  */
 export const createSharedDesktopRoutes = ({
   mainAreaChildren,
-  onboardingRoute,
   platformRoutes = [],
 }: SharedDesktopRouteOptions): RouteObject[] => [
   {
