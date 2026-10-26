@@ -38,6 +38,7 @@ import type {
   FieldSchema,
   SerializedPlatformDefinition,
 } from '@/server/services/bot/platforms/types';
+import { useServerConfigStore } from '@/store/serverConfig';
 
 import {
   platformCredentialBodyMap,
@@ -45,7 +46,7 @@ import {
   platformSettingsFieldExtrasMap,
 } from '../platform/registry';
 import QuickSetupSection from '../quickSetup/QuickSetupSection';
-import { extractSettingsDefaults } from './formState';
+import { extractSettingsDefaults, isFieldReleased } from './formState';
 import type { ChannelFormValues } from './index';
 
 const styles = createStaticStyles(({ css, cssVar }) => ({
@@ -69,6 +70,11 @@ const styles = createStaticStyles(({ css, cssVar }) => ({
     flex: none;
     align-self: center;
     color: ${cssVar.colorTextSecondary};
+  `,
+  limitHint: css`
+    font-size: 12px;
+    padding-block: 4px;
+    color: ${cssVar.colorError};
   `,
 }));
 
@@ -342,6 +348,15 @@ const ObjectListField = memo<ObjectListFieldProps>(
     const emptyLabel = t(`${field.label}Empty` as 'channel.allowFromEmpty');
     const removeLabel = t('channel.allowListRemove');
 
+    // `maximum` mirrors the runtime parser's own cap. An over-cap list is dropped wholesale there
+    // — for an allowlist that means "restrict nothing" — so the editor stops growing at the cap
+    // and flags a list that already arrived over it (hand-written config, or a save from before
+    // the cap existed). The save path refuses such a value; see `findOverLimitSettings`.
+    const limit = typeof field.maximum === 'number' ? field.maximum : undefined;
+    const limitMessage = limit
+      ? t('channel.channelListLimit').replace('{{max}}', String(limit))
+      : undefined;
+
     return (
       <Form.Field
         avatar={icon}
@@ -353,6 +368,9 @@ const ObjectListField = memo<ObjectListFieldProps>(
         <Form.List name={`${parentKey}.${field.key}`}>
           {({ fields: rows, add, remove }) => (
             <Flexbox gap={8} style={{ width: '100%' }}>
+              {limit !== undefined && rows.length > limit && (
+                <div className={styles.limitHint}>{limitMessage}</div>
+              )}
               {rows.length === 0 && (
                 <Flexbox style={{ fontSize: 12, opacity: 0.6, paddingBlock: 4 }}>
                   {emptyLabel}
@@ -398,7 +416,7 @@ const ObjectListField = memo<ObjectListFieldProps>(
               )}
               <Button
                 block
-                disabled={editDisabled}
+                disabled={editDisabled || (limit !== undefined && rows.length >= limit)}
                 icon={<Plus size={14} />}
                 type="dashed"
                 onClick={() => add({ id: '', name: '' })}
@@ -441,18 +459,22 @@ const ApplicationIdField = memo<{ disabled?: boolean; divider?: boolean; field: 
 
 // --------------- Helper: flatten fields from schema ---------------
 
-function getFields(schema: FieldSchema[], sectionKey: string): FieldSchema[] {
+function getFields(
+  schema: FieldSchema[],
+  sectionKey: string,
+  featureFlags?: Record<string, unknown>,
+): FieldSchema[] {
   const section = schema.find((f) => f.key === sectionKey);
   if (!section?.properties) return [];
 
-  return section.properties
-    .filter((f) => !f.devOnly || __DEV__)
-    .flatMap((f) => {
-      if (f.type === 'object' && f.properties) {
-        return f.properties.filter((child) => !child.devOnly || __DEV__);
-      }
-      return f;
-    });
+  const shown = (f: FieldSchema) => (!f.devOnly || __DEV__) && isFieldReleased(f, featureFlags);
+
+  return section.properties.filter(shown).flatMap((f) => {
+    if (f.type === 'object' && f.properties) {
+      return f.properties.filter(shown);
+    }
+    return f;
+  });
 }
 
 // --------------- Settings group title (memo'd) ---------------
@@ -510,14 +532,17 @@ const Body = memo<BodyProps>(
     const CustomCredentialBody = platformCredentialBodyMap[platformDef.id];
     const CredentialExtras = platformCredentialExtrasMap[platformDef.id];
 
+    const featureFlags = useServerConfigStore((s) => s.featureFlags) as
+      Record<string, unknown> | undefined;
+
     const credentialFields = useMemo(
-      () => getFields(platformDef.schema, 'credentials'),
-      [platformDef.schema],
+      () => getFields(platformDef.schema, 'credentials', featureFlags),
+      [platformDef.schema, featureFlags],
     );
 
     const settingsFields = useMemo(
-      () => getFields(platformDef.schema, 'settings'),
-      [platformDef.schema],
+      () => getFields(platformDef.schema, 'settings', featureFlags),
+      [platformDef.schema, featureFlags],
     );
 
     // Auto-expand the settings group on mount when an already-saved bot is
