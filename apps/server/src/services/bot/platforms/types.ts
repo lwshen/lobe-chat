@@ -337,10 +337,17 @@ export interface PlatformClient {
    */
   formatReply?: (body: string, stats?: UsageStats) => string;
 
-  /** Get a messenger for a specific thread (outbound messaging). */
-  getMessenger: (platformThreadId: string) => PlatformMessenger;
+  /**
+   * What people call the bot on this platform (display name, username), so a message that says the
+   * name is read as addressed to it. Optional: without it the bot is recognised by @mention only.
+   * Implementations cache; an error is treated as "no names yet" and retried on the next message.
+   */
+  getBotNames?: () => Promise<string[]>;
 
   // --- Runtime Operations ---
+
+  /** Get a messenger for a specific thread (outbound messaging). */
+  getMessenger: (platformThreadId: string) => PlatformMessenger;
 
   readonly id: string;
 

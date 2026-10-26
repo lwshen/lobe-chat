@@ -25,6 +25,7 @@ import { ExpertiseRejectionWorkflow } from '@/server/workflows/expertiseRejectio
 
 import { requireDecidableAcceptance } from '../acceptanceDecision';
 import { type AcceptanceMergeSummary, mergeAcceptanceRounds } from '../acceptanceMerge';
+import { acceptanceResponse } from '../acceptanceResponse';
 import {
   assertPlanLeavesAcceptedChecksAlone,
   type AttachedRun,
@@ -150,6 +151,7 @@ export class AcceptanceService {
       projectId?: string;
       requirement?: string;
       title?: string;
+      visibility?: AcceptanceItem['visibility'];
     },
   ): Promise<AcceptanceItem> => {
     const canonicalId = await assertSubjectExists(this.deps, subjectType, subjectId);
@@ -163,6 +165,7 @@ export class AcceptanceService {
       config: defaults?.config,
       projectId,
       requirement: defaults?.requirement,
+      ...(defaults?.visibility ? { visibility: defaults.visibility } : {}),
       ...(subjectType === 'standalone' && defaults?.title
         ? { metadata: { title: defaults.title } }
         : {}),
@@ -713,7 +716,7 @@ export class AcceptanceService {
     ]);
 
     return rows.map((row) => ({
-      ...row,
+      ...acceptanceResponse(row),
       checkCount: checkCounts.get(row.id) ?? null,
       project: projects.get(row.id) ?? null,
       subject: subjects.get(row.id)!,
