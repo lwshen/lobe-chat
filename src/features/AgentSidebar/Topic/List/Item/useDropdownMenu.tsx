@@ -2,6 +2,7 @@ import { AGENT_CHAT_TOPIC_URL } from '@lobechat/const';
 import type { ChatTopicStatus } from '@lobechat/types';
 import { type DropdownItem } from '@lobehub/ui';
 import { copyToClipboard, Icon, toast } from '@lobehub/ui';
+import { useLatest, useUnmountedRef } from 'ahooks';
 import {
   Archive,
   ArchiveRestore,
@@ -74,6 +75,10 @@ export const useTopicItemDropdownMenu = ({
   const activeWorkspaceId = useActiveWorkspaceId();
   const { pathname } = useActiveLocation();
   const routeTopicId = pathname.match(/\/project\/[^/]+\/topic\/([^/]+)\/?$/)?.[1];
+  // Read after awaits: the user may open another topic, or leave the project
+  // (unmounting this sidebar), while an archive is in flight.
+  const routeTopicIdRef = useLatest(routeTopicId);
+  const unmountedRef = useUnmountedRef();
   const activeWorkspaceSlug = useActiveWorkspaceSlug();
   const { allowed: canCreateTopic } = usePermission('create_content');
   const { allowed: canEditTopic } = usePermission('edit_own_content');
@@ -120,8 +125,22 @@ export const useTopicItemDropdownMenu = ({
     if (!id) return;
     if (isCompleted) await unmarkTopicCompleted(id);
     else await markTopicCompleted(id);
-    if (scope) await refresh();
-  }, [id, isCompleted, markTopicCompleted, unmarkTopicCompleted, scope, refresh]);
+    if (scope) {
+      if (!isCompleted && !unmountedRef.current && routeTopicIdRef.current === id)
+        navigate(`/project/${scope.projectId}`);
+      await refresh();
+    }
+  }, [
+    id,
+    isCompleted,
+    markTopicCompleted,
+    unmarkTopicCompleted,
+    scope,
+    routeTopicIdRef,
+    unmountedRef,
+    navigate,
+    refresh,
+  ]);
 
   const handleOpenShareModal = useCallback(() => {
     if (!id) return;
