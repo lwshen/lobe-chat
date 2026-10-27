@@ -1889,11 +1889,10 @@ export class GatewayActionImpl {
       });
     });
 
-    // Get a fresh JWT token (original expired after 5 min). The server throws
-    // TRPCError NOT_FOUND when it has no running operation on this topic — our
-    // local marker is stale (e.g. an error run cleared the server marker but not
-    // the store). Clear it and bail silently so the reconnect SWR fetcher resolves
-    // and does not retry the 404 forever.
+    // Get a fresh JWT token (original expired after 5 min). NOT_FOUND: no running
+    // operation on this topic, so the local marker is stale — clear it. FORBIDDEN:
+    // a workspace teammate's live run the gateway only streams to its starter —
+    // keep the marker. Both bail silently so the reconnect SWR fetcher resolves.
     let token: string;
     try {
       // Share visitors have no owner-scoped access to `aiAgentService.refreshGatewayToken`
@@ -1917,6 +1916,7 @@ export class GatewayActionImpl {
         this.clearLocalRunningOperation({ operationId, topicId });
         return;
       }
+      if (isTrpcErrorCode(error, 'FORBIDDEN')) return;
       throw error;
     }
 
