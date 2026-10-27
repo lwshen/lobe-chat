@@ -261,8 +261,6 @@ export const goalKeys = {
   pendingClarifications: def('goal:pendingClarifications', () => ['goal:pendingClarifications']),
   /** Gates and sign-offs waiting on the user across every goal, for the approval island. */
   pendingForIsland: def('goal:pendingForIsland', () => ['goal:pendingForIsland']),
-  /** Goals whose planning conversation is this topic (`subject_type = 'topic'`). */
-  topicGoals: def('goal:topicGoals', (topicId: string) => ['goal:topicGoals', topicId]),
 };
 
 // ---- work ---------------------------------------------------------------
@@ -728,6 +726,11 @@ export const inboxKeys = {
   ),
   unreadCount: def('inbox:unreadCount', (workspaceId: string | null) => [
     'inbox:unreadCount',
+    workspaceId,
+  ]),
+  /** Desktop mention-banner watcher: unread `mention` rows of the active workspace. */
+  unreadMentions: def('inbox:unreadMentions', (workspaceId: string | null) => [
+    'inbox:unreadMentions',
     workspaceId,
   ]),
 };

@@ -685,7 +685,9 @@ export function registerHandlers(
       (await gateFollowup({
         entryPoint: 'onSubscribedMessage',
         merged,
-        // Already judged by `initiate`: do not judge again.
+        // Already judged by `initiate`: do not judge again. A message addressed to the bot does
+        // not wait for the scheduler's collect window.
+        immediate: initiation?.addressed,
         initiated: !!initiation,
         parked: [...(context?.skipped ?? []), message],
         thread,
