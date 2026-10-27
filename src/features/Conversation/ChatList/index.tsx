@@ -121,6 +121,12 @@ export interface ChatListProps {
    */
   printable?: boolean;
   /**
+   * Reopen the conversation where the reader stopped last time (e.g. a shared
+   * topic), paging in history until that message is loaded. Ignored while a
+   * message deep link is present.
+   */
+  rememberReadingPosition?: boolean;
+  /**
    * Force showing welcome component even when messages exist
    */
   showWelcome?: boolean;
@@ -148,6 +154,7 @@ const ChatList = memo<ChatListProps>(
     messageDeepLink,
     onForwardPagingUnsupported,
     printable,
+    rememberReadingPosition,
     showWelcome,
   }) => {
     // The chat store owns the transcript; this view keeps its sync mounted.
@@ -309,7 +316,7 @@ const ChatList = memo<ChatListProps>(
     useDeepLinkHistoryBackfill({
       deepLinkKey: messageDeepLink?.navigationKey,
       loadedCount: dbMessages.length,
-      loadEarlierMessages,
+      loadPage: loadEarlierMessages,
       ready: messagesInit && paging === 'backward',
       resolved: !!resolvedMessageDeepLink || deepLinkTargetLoaded,
     });
@@ -391,6 +398,7 @@ const ChatList = memo<ChatListProps>(
               messageDeepLink={resolvedMessageDeepLink}
               paging={paging}
               printable={printable}
+              rememberReadingPosition={rememberReadingPosition}
             />
           </BackgroundRunHintContext>
         </MessageActionProvider>

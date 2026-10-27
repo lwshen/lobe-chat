@@ -57,6 +57,85 @@ export const REPLY_KEYS = ['displayToolCalls', 'showUsageStats', 'reactionMode']
 const WAKE_KEYS = ['watchKeywords'];
 export const WAKE_KEY_PREFIX = 'botWake';
 
+export type WakeSectionKey = 'channels' | 'judgement' | 'keywords' | 'more' | 'pace';
+
+export interface WakeSection {
+  fields: FieldSchema[];
+  key: WakeSectionKey;
+}
+
+/**
+ * The wake tab's blocks, in page order, and the options each holds, in the order a person sets
+ * them. The strings are the keys of `BOT_WAKE_SETTING_KEYS` (a test keeps the two in step); they
+ * are spelled out here so the page does not pull the server's settings parser into the bundle.
+ *
+ * - keywords: words that wake the bot with no @
+ * - channels: where it may join a conversation nobody addressed to it
+ * - pace: how soon and how often it speaks up on its own, as a preset; `custom` opens the numbers
+ *   (and how sure it must be that a message right after its own reply is still for it)
+ * - judgement (shown as "initiative"): when it may speak up without being called. In the order a
+ *   person thinks about it: for me (the owner's own remarks), for others (a message plainly for
+ *   the bot that nobody addressed to it), then the custom instructions behind both. Each is a
+ *   switch with its dial or text area opening under it.
+ */
+const WAKE_SECTION_KEYS: Array<[Exclude<WakeSectionKey, 'more'>, string[]]> = [
+  ['keywords', ['watchKeywords']],
+  ['channels', ['botWakeScope', 'botWakeAllowChannels', 'botWakeDenyChannels']],
+  [
+    'pace',
+    [
+      'botWakePace',
+      'botWakeWindowSeconds',
+      'botWakeClassifierThreshold',
+      'botWakeMaxSilentWakes',
+      'botWakeOwnerPresenceSeconds',
+      'botWakeSchedulerMode',
+      'botWakeCollectSeconds',
+      'botWakeCooldownSeconds',
+    ],
+  ],
+  [
+    'judgement',
+    [
+      'botWakeProactiveEnabled',
+      'botWakeProactiveThreshold',
+      'botWakeClassifierInitiateEnabled',
+      'botWakeClassifierInitiateThreshold',
+      'botWakeCustomInstructionsEnabled',
+      'botWakeCustomInstructions',
+    ],
+  ],
+];
+
+/** The hidden master switch is not an option a person sets. */
+const WAKE_MASTER = 'botWakeEnabled';
+
+/**
+ * Split the wake tab's fields into the blocks the page shows. Empty blocks are dropped, so a user
+ * the bot-wake options are not released to sees only the keywords. An option not named above
+ * lands in a `more` block, so a field the schema adds later cannot vanish from the page.
+ */
+export const groupWakeFields = (fields: FieldSchema[]): WakeSection[] => {
+  const byKey = new Map(fields.map((field) => [field.key, field]));
+  const placed = new Set<string>([WAKE_MASTER]);
+
+  const sections: WakeSection[] = WAKE_SECTION_KEYS.map(([key, keys]) => {
+    keys.forEach((k) => placed.add(k));
+
+    return {
+      fields: keys.map((k) => byKey.get(k)).filter((field): field is FieldSchema => !!field),
+      key,
+    };
+  });
+
+  const more: WakeSection = {
+    fields: fields.filter((field) => !placed.has(field.key)),
+    key: 'more',
+  };
+
+  return [...sections, more].filter((section) => section.fields.length > 0);
+};
+
 /** How the bot reaches the platform: how events arrive. */
 const CONNECT_KEYS = ['connectionMode'];
 

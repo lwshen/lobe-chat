@@ -117,14 +117,14 @@ describe('bot-wake recorder: initiating a wake nobody addressed', () => {
     });
   });
 
-  it('does not initiate without a cue: not named, outside the window', async () => {
-    const classify = classifierAnswer(0.9);
+  it('does not initiate outside the window when the classifier is not sure the message is for it', async () => {
+    const classify = classifierAnswer(0.64);
     const recorder = make(WITH_CLASSIFIER('enforce'), fakeState(), { classify });
 
     await expect(
       recorder.initiate(observation({}, { text: 'anyone seen the deploy logs?' })),
     ).resolves.toBeUndefined();
-    expect(classify).not.toHaveBeenCalled();
+    expect(classify).toHaveBeenCalledOnce();
   });
 
   it('only watches while the rules are in shadow: naming the bot changes nothing', async () => {
@@ -151,7 +151,6 @@ describe('bot-wake recorder: initiating a wake nobody addressed', () => {
   it.each([
     { reason: 'scope none', rules: { scope: 'none' } },
     { reason: 'channel denied', rules: { denyChannels: ['c1'] } },
-    { reason: 'owner present', rules: { ownerPresenceSeconds: 600 } },
   ])('an owner rule still vetoes a message that names the bot ($reason)', async ({ rules }) => {
     const state = fakeState({ ...spokeRecently(), ownerLastSpokeAt: Date.now() - 1000 });
     const recorder = make({ botWake: { enabled: true, mode: 'enforce', rules } }, state);
@@ -161,6 +160,20 @@ describe('bot-wake recorder: initiating a wake nobody addressed', () => {
         observation({}, { author: { isBot: false, isMe: false, userId: 'someone-else' } }),
       ),
     ).resolves.toBeUndefined();
+  });
+
+  it('wakes when someone else names the bot while the owner is around', async () => {
+    const state = fakeState({ ownerLastSpokeAt: Date.now() - 10_000, silentWakes: 0 });
+    const recorder = make(
+      { botWake: { enabled: true, mode: 'enforce', rules: { ownerPresenceSeconds: 120 } } },
+      state,
+    );
+
+    await expect(
+      recorder.initiate(
+        observation({}, { author: { isBot: false, isMe: false, userId: 'someone-else' } }),
+      ),
+    ).resolves.toEqual({ addressed: true, reason: 'named-in-text' });
   });
 
   it('never wakes on its own message or another bot, even naming itself', async () => {
@@ -299,7 +312,11 @@ describe('bot-wake recorder: initiating a wake nobody addressed', () => {
 
   it('follows the platform’s own name refresh: a renamed bot answers to the new name, not the old', async () => {
     const names = vi.fn(async () => ['Shadow Arvin']);
-    const recorder = make(ENFORCE, fakeState(), { botNames: names });
+    // Not sure the old name is for it: only the name can start the wake here.
+    const recorder = make(ENFORCE, fakeState(), {
+      botNames: names,
+      classify: classifierAnswer(0.1),
+    });
 
     await expect(recorder.initiate(observation())).resolves.toEqual({
       addressed: true,
@@ -353,6 +370,26 @@ describe('bot-wake recorder: initiating a wake nobody addressed', () => {
     const [decision] = recorded();
     expect(decision.toTag).toBe('named');
     expect(decision.metadata.stateSnapshot.conversation.botNames).toEqual([BOT_NAME]);
+  });
+
+  it('records the enforcing rule that stopped a named wake, not a shadow replay of it', async () => {
+    const recorder = make(
+      { botWake: { enabled: true, mode: 'enforce', rules: { denyChannels: ['c1'] } } },
+      fakeState(),
+    );
+
+    expect(await recorder.initiate(observation())).toBeUndefined();
+    recorder.record(observation());
+    await flush();
+
+    const verdicts = recorded()[0].verdicts.map((verdict: any) => [
+      verdict.policyId,
+      verdict.mode,
+      verdict.verdict,
+      verdict.reason,
+    ]);
+    expect(verdicts).toContainEqual(['bot-wake:owner-rules', 'enforce', 'deny', 'channel-denied']);
+    expect(verdicts.some(([, mode]: string[]) => mode === 'shadow')).toBe(false);
   });
 
   it('a message that did not wake the bot is still recorded as it was judged', async () => {

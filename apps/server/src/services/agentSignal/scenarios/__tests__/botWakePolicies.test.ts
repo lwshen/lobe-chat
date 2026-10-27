@@ -328,6 +328,46 @@ describe('owner rules policy', () => {
   });
 });
 
+describe('owner rules policy: naming the bot', () => {
+  const rules = rulesFor({ rules: { ownerPresenceSeconds: 120 } });
+  const conversation = { botNames: ['Nasa'], recent: [] };
+  const run = (
+    s: Partial<WakeSignal>,
+    c: Partial<WakeChannelState>,
+    botWake: Record<string, unknown> = { rules: { ownerPresenceSeconds: 120 } },
+  ) =>
+    createOwnerRulesPolicy('enforce', rulesFor(botWake)).evaluate({
+      signal: signal(s),
+      state: { ...snapshot(c), conversation },
+    });
+
+  it('does not let owner presence silence someone else calling the bot by name', () => {
+    const result = run({ message: 'Nasa ？' }, { ownerLastSpokeAt: NOW - 10_000 });
+
+    expect([result.verdict, result.reason]).toEqual(['abstain', 'no-owner-rule-opinion']);
+  });
+
+  it('still suppresses unnamed chatter while the owner is around', () => {
+    const result = createOwnerRulesPolicy('enforce', rules).evaluate({
+      signal: signal({ message: 'anyone know why the deploy is slow?' }),
+      state: { ...snapshot({ ownerLastSpokeAt: NOW - 10_000 }), conversation },
+    });
+
+    expect([result.verdict, result.reason]).toEqual(['deny', 'owner-present']);
+  });
+
+  it('keeps scope and the channel lists in force when the bot is named', () => {
+    const named = { message: 'Nasa hi' };
+    const recent = { ownerLastSpokeAt: NOW - 10_000 };
+
+    expect(run(named, recent, { rules: { scope: 'none' } }).reason).toBe('scope-none');
+    expect(run(named, recent, { rules: { denyChannels: ['c1'] } }).reason).toBe('channel-denied');
+    expect(run(named, recent, { rules: { allowChannels: ['c2'] } }).reason).toBe(
+      'channel-not-allowed',
+    );
+  });
+});
+
 describe('classifier policy', () => {
   const rules = rulesFor({
     classifier: { mode: 'enforce', threshold: 0.5 },
@@ -458,11 +498,11 @@ describe('createWakePolicySet', () => {
   const ids = (settings: Record<string, unknown> | null) =>
     createWakePolicySet({ classify, settings }).map((policy) => `${policy.id}:${policy.mode}`);
 
-  it('defaults every policy to shadow', () => {
+  it('enforces every policy by default', () => {
     expect(ids({ botWake: { enabled: true } })).toEqual([
-      `${INTERNAL_RULES_POLICY_ID}:shadow`,
-      `${OWNER_RULES_POLICY_ID}:shadow`,
-      `${CLASSIFIER_POLICY_ID}:shadow`,
+      `${INTERNAL_RULES_POLICY_ID}:enforce`,
+      `${OWNER_RULES_POLICY_ID}:enforce`,
+      `${CLASSIFIER_POLICY_ID}:enforce`,
     ]);
   });
 
@@ -473,20 +513,20 @@ describe('createWakePolicySet', () => {
     expect(policies.slice(0, -1).every((policy) => !policy.costly)).toBe(true);
   });
 
-  it('honours per-policy modes', () => {
+  it('honours an operator override of the modes in a nested config', () => {
     expect(
-      ids({ botWake: { classifier: { mode: 'enforce' }, enabled: true, mode: 'enforce' } }),
+      ids({ botWake: { classifier: { mode: 'shadow' }, enabled: true, mode: 'shadow' } }),
     ).toEqual([
-      `${INTERNAL_RULES_POLICY_ID}:enforce`,
-      `${OWNER_RULES_POLICY_ID}:enforce`,
-      `${CLASSIFIER_POLICY_ID}:enforce`,
+      `${INTERNAL_RULES_POLICY_ID}:shadow`,
+      `${OWNER_RULES_POLICY_ID}:shadow`,
+      `${CLASSIFIER_POLICY_ID}:shadow`,
     ]);
   });
 
   it('leaves out policies switched off, and the classifier without a model call', () => {
     expect(ids({ botWake: { classifier: { mode: 'off' }, enabled: true } })).toHaveLength(2);
     expect(ids({ botWake: { enabled: true, mode: 'off' } })).toEqual([
-      `${CLASSIFIER_POLICY_ID}:shadow`,
+      `${CLASSIFIER_POLICY_ID}:enforce`,
     ]);
     expect(createWakePolicySet({ settings: { botWake: { enabled: true } } })).toHaveLength(2);
   });
@@ -501,8 +541,25 @@ describe('policy set aggregation', () => {
 
   beforeEach(() => classify.mockClear());
 
-  it('skips the costly classifier once a rule has denied, even in shadow', async () => {
+  it('stops at the first rule that denies and never asks the classifier', async () => {
     const policies = createWakePolicySet({ classify, settings: { botWake: { enabled: true } } });
+    const decision = await aggregateWakeVerdictsAsync(
+      policies,
+      signal({ author: { ...human, isBot: true } }),
+      snapshot(),
+    );
+
+    expect(classify).not.toHaveBeenCalled();
+    expect(decision.verdict).toBe('deny');
+    expect(decision.records.map((record) => record.policyId)).toEqual([INTERNAL_RULES_POLICY_ID]);
+    expect(decision.records[0]).toMatchObject({ reason: 'bot-message', verdict: 'deny' });
+  });
+
+  it('skips the costly classifier once a rule has denied, even in shadow', async () => {
+    const policies = createWakePolicySet({
+      classify,
+      settings: { botWake: { classifier: { mode: 'shadow' }, enabled: true, mode: 'shadow' } },
+    });
     const decision = await aggregateWakeVerdictsAsync(
       policies,
       signal({ author: { ...human, isBot: true } }),
@@ -514,7 +571,6 @@ describe('policy set aggregation', () => {
       INTERNAL_RULES_POLICY_ID,
       OWNER_RULES_POLICY_ID,
     ]);
-    expect(decision.records[0]).toMatchObject({ reason: 'bot-message', verdict: 'deny' });
   });
 
   it('runs the classifier when the cheap rules pass', async () => {

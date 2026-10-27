@@ -8,9 +8,11 @@ import { Plus, Trash2 } from 'lucide-react';
 import { memo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { FormInput, FormPassword } from '@/components/FormInput';
+import { FormInput, FormPassword, FormTextArea } from '@/components/FormInput';
 import InfoTooltip from '@/components/InfoTooltip';
 import type { FieldSchema } from '@/server/services/bot/platforms/types';
+
+import { ChoiceList, type ChoiceOption } from './ChoiceList';
 
 // --------------- Validation rules builder ---------------
 
@@ -124,19 +126,27 @@ export const SchemaField = memo<SchemaFieldProps>(
 
     // Conditional visibility: watch the sibling field specified by visibleWhen
     const form = useFormInstance();
-    const watchedValue = useWatch(form, (values) =>
-      field.visibleWhen ? values[parentKey]?.[field.visibleWhen.field] : undefined,
+    const conditions = field.visibleWhen
+      ? Array.isArray(field.visibleWhen)
+        ? field.visibleWhen
+        : [field.visibleWhen]
+      : [];
+    // Joined into one string so the selector returns a stable value between renders.
+    const watchedValues = useWatch(form, (values) =>
+      JSON.stringify(conditions.map((c) => values[parentKey]?.[c.field] ?? null)),
     );
     const selectedValue = useWatch(form, (values) =>
       field.enum ? values[parentKey]?.[field.key] : undefined,
     );
-    if (field.visibleWhen) {
-      // An array matches any of its entries, so one field can be shared by
-      // several sibling values (e.g. the window size for `burst` + `debounce`).
-      const expected = field.visibleWhen.value;
-      const matches = Array.isArray(expected)
-        ? expected.includes(watchedValue)
-        : watchedValue === expected;
+    if (conditions.length > 0) {
+      const watched = JSON.parse(watchedValues) as unknown[];
+      // Every condition must hold. Within one, an array matches any of its
+      // entries, so one field can be shared by several sibling values (e.g. the
+      // window size for `burst` + `debounce`).
+      const matches = conditions.every(({ value: expected }, i) => {
+        const actual = watched[i] ?? undefined;
+        return Array.isArray(expected) ? expected.includes(actual) : actual === expected;
+      });
       if (!matches) return null;
     }
 
@@ -145,7 +155,8 @@ export const SchemaField = memo<SchemaFieldProps>(
     // The help line follows the choice: once someone picks a policy, what that
     // policy does is worth more than the generic description of the field.
     const selectedIndex = field.enum ? field.enum.indexOf(selectedValue as string) : -1;
-    const selectedHint = field.enumDescriptions?.[selectedIndex];
+    // A choice list shows every option's sentence already; its help line stays the field's own.
+    const selectedHint = field.choices ? undefined : field.enumDescriptions?.[selectedIndex];
     const descKey = selectedHint || field.description;
     const desc = descOverride ?? (descKey ? t(descKey) : undefined);
 
@@ -199,7 +210,21 @@ export const SchemaField = memo<SchemaFieldProps>(
         break;
       }
       case 'string': {
-        if (field.enum) {
+        if (field.enum && field.choices) {
+          children = (
+            <FormChoiceList
+              aria-label={t(field.label)}
+              disabled={disabled}
+              options={field.enum.map((value, i) => ({
+                desc: field.enumDescriptions?.[i] ? t(field.enumDescriptions[i]) : undefined,
+                label: field.enumLabels?.[i] ? t(field.enumLabels[i]) : value,
+                recommendedLabel:
+                  field.enumRecommended === value ? t('channel.access.recommended') : undefined,
+                value,
+              }))}
+            />
+          );
+        } else if (field.enum) {
           const options = field.enum.map((value, i) => ({
             description: field.enumDescriptions?.[i] ? t(field.enumDescriptions[i]) : undefined,
             label: field.enumLabels?.[i] ? t(field.enumLabels[i]) : value,
@@ -233,6 +258,19 @@ export const SchemaField = memo<SchemaFieldProps>(
               }
             />
           );
+        } else if (field.rows) {
+          // A prompt or other longer text: a text area across the whole row, with a counter
+          // against the limit the runtime enforces.
+          children = (
+            <FormTextArea
+              disabled={disabled}
+              maxLength={field.maximum}
+              placeholder={placeholder}
+              rows={field.rows}
+              showCount={typeof field.maximum === 'number'}
+              style={{ resize: 'vertical', width: '100%' }}
+            />
+          );
         } else {
           children = (
             <FormInput
@@ -261,9 +299,13 @@ export const SchemaField = memo<SchemaFieldProps>(
           desc={desc}
           divider={divider}
           label={label}
-          layout={fullWidth || field.type === 'password' ? 'vertical' : 'horizontal'}
           name={`${parentKey}.${field.key}`}
           validate={validateOverride ?? buildValidate(field, t)}
+          layout={
+            fullWidth || field.type === 'password' || field.rows || field.choices
+              ? 'vertical'
+              : 'horizontal'
+          }
         >
           {children}
         </Form.Field>
@@ -273,6 +315,19 @@ export const SchemaField = memo<SchemaFieldProps>(
 );
 
 SchemaField.displayName = 'ChannelSchemaField';
+
+/** {@link ChoiceList} bound to a form field: the field hands it the value and takes the change. */
+const FormChoiceList = ({
+  onChange,
+  value,
+  ...props
+}: {
+  'aria-label'?: string;
+  'disabled'?: boolean;
+  'onChange'?: (value: string) => void;
+  'options': ChoiceOption<string>[];
+  'value'?: string;
+}) => <ChoiceList {...props} value={value ?? ''} onChange={(next) => onChange?.(next)} />;
 
 // --------------- Object-list field (e.g. allowFrom: [{id, name?}]) ---------------
 
