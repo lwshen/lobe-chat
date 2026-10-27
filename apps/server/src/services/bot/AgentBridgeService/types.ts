@@ -29,15 +29,21 @@ export interface BridgeHandlerOpts {
   client?: PlatformClient;
   displayToolCalls?: boolean;
   /**
+   * The bot woke on its own because a message nobody addressed to it falls within its duties (a
+   * `followup` wake); `matched` names the duty. The agent is told why. See
+   * `formatBotPlatformContext`.
+   */
+  duty?: { matched?: string };
+  /**
    * The bot woke only because its name is in the text (a `followup` wake): people often talk about
    * it rather than to it, and the agent is told so. See `formatBotPlatformContext`.
    */
   named?: boolean;
   /**
-   * The bot woke on its own to offer its owner help nobody asked for (a `followup` wake); the
-   * agent is told why. See `formatBotPlatformContext`.
+   * The short acknowledgement already posted before the run ("Got it, I'll check the logs
+   * first"), so the agent continues from it instead of acknowledging again.
    */
-  proactive?: boolean;
+  openingReply?: string;
   /**
    * Status-reaction verbosity (see `BotReactionMode`). Defaults to
    * `DEFAULT_BOT_REACTION_MODE` for callers that predate the setting.

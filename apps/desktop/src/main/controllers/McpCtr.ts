@@ -6,6 +6,7 @@ import {
   type McpIpcPayload,
   serializeMcpIpcPayload,
 } from '@lobechat/utils/mcpIpcPayload';
+import { getMcpServerDescription } from '@lobechat/utils/mcpServerDescription';
 
 import FileService from '@/services/fileSrv';
 import { createLogger } from '@/utils/logger';
@@ -510,13 +511,7 @@ export default class McpCtr extends ControllerModule {
         identifier,
         meta: {
           avatar: input.metadata?.avatar || 'MCP_AVATAR',
-          description:
-            input.metadata?.description ||
-            `${identifier} MCP server has ` +
-              Object.entries(manifest)
-                .filter(([key]) => ['tools', 'prompts', 'resources'].includes(key))
-                .map(([key, item]) => `${(item as Array<any>)?.length} ${key}`)
-                .join(','),
+          description: input.metadata?.description || getMcpServerDescription(identifier, manifest),
           title: input.metadata?.name || identifier,
         },
         ...manifest,
@@ -579,7 +574,7 @@ export default class McpCtr extends ControllerModule {
           avatar: input.metadata?.avatar || 'MCP_AVATAR',
           description:
             input.metadata?.description ||
-            `${identifier} MCP server has ${tools.length} tools, like "${tools[0]?.name}"`,
+            getMcpServerDescription(identifier, { tools }, { includeToolExample: true }),
           title: identifier,
         },
         type: 'mcp' as any,

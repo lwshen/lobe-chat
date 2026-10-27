@@ -141,7 +141,14 @@ export interface BotHandlerContext {
     thread: { id: string },
     threadSubscribed?: boolean,
   ) => Promise<BotWakeInitiation | undefined>;
+  /**
+   * The `bot_wake` rollout flag for this bot's owner. Until it is on, every wake is answered, as
+   * it was before the pipeline existed.
+   */
+  isBotWakeRolledOut: () => Promise<boolean>;
   isMessageMonitoringAllowed: (caller: string, threadId: string) => Promise<boolean>;
+  /** Watch keywords the owner marked as the bot's names (`asName`); a subset of `watchKeywords`. */
+  nameKeywords: ReadonlyArray<string>;
   /** Records the wake decision a branch just made. Observation only; never throws. */
   observe: (
     entryPoint: BotWakeEntryPoint,
@@ -170,6 +177,27 @@ export interface BotHandlerContext {
     thread: { id: string },
   ) => void;
   serverDB: LobeChatDatabase;
+  /**
+   * Opens the reply to a message that woke the bot (an acknowledgement, and the channel or a new
+   * thread), records the wake, and returns the acknowledgement it posted. Swaps `thread.id` when a
+   * thread opens. Call `release` once the bridge has taken the run: until then the channel stays
+   * claimed, so a concurrent opening does not pick it too.
+   */
+  startReply: (input: {
+    entryPoint: BotWakeEntryPoint;
+    /** The previous behaviour opened a reply thread here; kept when the bot does not decide. */
+    legacyOpensThread?: boolean;
+    message: WakeMessageLike;
+    rawMessage: unknown;
+    reason: BotWakeReason;
+    thread: {
+      id: string;
+      post: (message: string) => Promise<unknown>;
+      startTyping?: () => Promise<unknown>;
+    };
+    threadSubscribed?: boolean;
+    wakeKind: 'followup' | 'mention';
+  }) => Promise<{ openingReply?: string; release: () => void }>;
   userId: string;
   watchKeywordEntries: WatchKeywordEntry[];
   watchKeywords: ReadonlyArray<string>;

@@ -90,85 +90,25 @@ const make = (
   });
 
 const ENFORCE = { botWake: { enabled: true, mode: 'enforce' } };
-const WITH_CLASSIFIER = (mode: string) => ({
-  botWake: { classifier: { mode, threshold: 0.5 }, enabled: true, mode: 'enforce' },
-});
-
 /** The bot spoke 4m49s ago, inside the default 5 minute window. */
 const spokeRecently = () => ({ botLastSpokeAt: Date.now() - 289_000, silentWakes: 0 });
 
 const recorded = () => mockRecordSignalDecision.mock.calls.map(([, params]) => params.decision);
 
-const WEATHER = '我想知道明天杭州天气';
 const weather = (message: Record<string, unknown> = {}) =>
   observation(
     {},
-    { author: { isBot: false, isMe: false, userId: 'bob' }, text: WEATHER, ...message },
+    {
+      author: { isBot: false, isMe: false, userId: 'bob' },
+      text: '我想知道明天杭州天气',
+      ...message,
+    },
   );
 
-describe('bot-wake recorder: a confident classifier outside the follow-up window', () => {
+describe('bot-wake recorder: who wrote the message and whom it answered', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRecordSignalDecision.mockResolvedValue({ persisted: false });
-  });
-
-  it('wakes on a message plainly meant for it, at once like its name (the reported case)', async () => {
-    const recorder = make(ENFORCE, fakeState(), { classify: classifierAnswer(0.89) });
-
-    await expect(recorder.initiate(weather())).resolves.toEqual({
-      addressed: true,
-      reason: 'classifier-confident',
-    });
-  });
-
-  it('starts from 0.8, a stricter bar than the 0.5 that confirms a follow-up', async () => {
-    const at = (score: number) =>
-      make(ENFORCE, fakeState(), { classify: classifierAnswer(score) }).initiate(weather());
-
-    await expect(at(0.82)).resolves.toMatchObject({ reason: 'classifier-confident' });
-    await expect(at(0.75)).resolves.toBeUndefined();
-  });
-
-  it('records the classifier at the bar it was held to', async () => {
-    const recorder = make(ENFORCE, fakeState(), { classify: classifierAnswer(0.6) });
-
-    await recorder.initiate(weather());
-    recorder.record(weather());
-    await flush();
-
-    expect(
-      recorded()[0].verdicts.map((v: any) => [v.policyId, v.mode, v.verdict, v.confidence]),
-    ).toContainEqual(['bot-wake:classifier', 'enforce', 'deny', 0.6]);
-  });
-
-  it('can be turned off, and never runs while the classifier or the rules only watch', async () => {
-    const classify = classifierAnswer(0.99);
-    const off = { botWake: { classifier: { initiateThreshold: 0 }, enabled: true } };
-    const switchedOff = { botWake: { classifier: { initiateEnabled: false }, enabled: true } };
-    const classifierShadow = WITH_CLASSIFIER('shadow');
-    const rulesShadow = { botWake: { enabled: true, mode: 'shadow' } };
-
-    for (const settings of [off, switchedOff, classifierShadow, rulesShadow]) {
-      await expect(
-        make(settings, fakeState(), { classify }).initiate(weather()),
-      ).resolves.toBeUndefined();
-    }
-  });
-
-  it('keeps out where a rule says no, and on a classifier that did not answer', async () => {
-    const denied = make(
-      { botWake: { enabled: true, mode: 'enforce', rules: { denyChannels: ['c1'] } } },
-      fakeState(),
-      { classify: classifierAnswer(0.99) },
-    );
-    const failing = make(ENFORCE, fakeState(), {
-      classify: vi.fn(async () => {
-        throw new Error('boom');
-      }),
-    });
-
-    await expect(denied.initiate(weather())).resolves.toBeUndefined();
-    await expect(failing.initiate(weather())).resolves.toBeUndefined();
   });
 
   it('records who wrote the message, by id and whether it is the owner', async () => {
@@ -179,6 +119,22 @@ describe('bot-wake recorder: a confident classifier outside the follow-up window
     await flush();
 
     expect(recorded()[0].metadata.stateSnapshot.author).toEqual({ id: 'bob', isOwner: false });
+    expect(recorded()[0].metadata.stateSnapshot).not.toHaveProperty('replyToAuthorId');
+  });
+
+  it('records whom a reply answered, by id only', async () => {
+    const recorder = make(ENFORCE, fakeState(), { classify: classifierAnswer(0.1) });
+    const reply = () =>
+      weather({
+        raw: { referenced_message: { author: { global_name: 'Innei', id: 'innei' } }, type: 19 },
+      });
+
+    await recorder.initiate(reply());
+    recorder.record(reply());
+    await flush();
+
+    expect(recorded()[0].metadata.stateSnapshot.replyToAuthorId).toBe('innei');
+    expect(JSON.stringify(recorded()[0].metadata.stateSnapshot)).not.toContain('Innei');
   });
 });
 
@@ -238,4 +194,41 @@ describe('bot-wake recorder: the replay of a parked message', () => {
     await expect(make(ENFORCE, state, { classify }).initiate(parked())).resolves.toBeUndefined();
     expect(classify).toHaveBeenCalledOnce();
   });
+
+  it('keeps the matched duty for the replay of a message parked for its duties', async () => {
+    const dutyJudge = vi.fn(async () => ({ duty: '评估需求', inDuty: 0.9, reason: 'p=0.9' }));
+    const state = fakeState();
+    const recorder = make(
+      { botWake: { duties: { text: '评估需求' }, enabled: true, mode: 'enforce' } },
+      state,
+      { classify: classifierAnswer(0.05), dutyJudge },
+    );
+
+    await expect(recorder.initiate(parked('要是导出能保留文件夹结构就好了'))).resolves.toEqual({
+      addressed: false,
+      duty: '评估需求',
+      reason: 'in-duty',
+    });
+    await expect(recorder.initiate(replay('要是导出能保留文件夹结构就好了'))).resolves.toEqual({
+      addressed: false,
+      duty: '评估需求',
+      reason: 'in-duty',
+    });
+    expect(dutyJudge).toHaveBeenCalledOnce();
+  });
+
+  // Kept by a build that still had them: the replay is judged again rather than trusted.
+  it.each(['classifier-confident', 'proactive-help'])(
+    'judges again a replay kept for the retired %s wake',
+    async (reason) => {
+      const classify = classifierAnswer(0.9);
+      const state = fakeState(spokeRecently());
+      state.initiations.set(`${APP}:m-1`, JSON.stringify({ reason, verdicts: [] }));
+
+      await expect(make(ENFORCE, state, { classify }).initiate(replay())).resolves.toMatchObject({
+        reason: 'followup-window',
+      });
+      expect(classify).toHaveBeenCalledOnce();
+    },
+  );
 });

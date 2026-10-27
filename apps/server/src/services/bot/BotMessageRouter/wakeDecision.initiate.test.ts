@@ -117,14 +117,16 @@ describe('bot-wake recorder: initiating a wake nobody addressed', () => {
     });
   });
 
-  it('does not initiate outside the window when the classifier is not sure the message is for it', async () => {
-    const classify = classifierAnswer(0.64);
+  // Outside the window only the duties may start a wake: the classifier's "is it for me?" no
+  // longer does, however sure it is.
+  it('does not initiate outside the window, and does not ask the classifier there', async () => {
+    const classify = classifierAnswer(0.99);
     const recorder = make(WITH_CLASSIFIER('enforce'), fakeState(), { classify });
 
     await expect(
       recorder.initiate(observation({}, { text: 'anyone seen the deploy logs?' })),
     ).resolves.toBeUndefined();
-    expect(classify).toHaveBeenCalledOnce();
+    expect(classify).not.toHaveBeenCalled();
   });
 
   it('only watches while the rules are in shadow: naming the bot changes nothing', async () => {
@@ -404,6 +406,63 @@ describe('bot-wake recorder: initiating a wake nobody addressed', () => {
 
     expect(recorded()[0].outcome).toBe('skip');
     expect(classify).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('bot-wake recorder: watch keywords marked as the bot names', () => {
+  const SOMEONE = { author: { isBot: false, isMe: false, userId: 'someone-else' } };
+  const OWNER_AROUND = {
+    botWake: { enabled: true, mode: 'enforce', rules: { ownerPresenceSeconds: 120 } },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRecordSignalDecision.mockResolvedValue({ persisted: false });
+  });
+
+  it('wakes as named-in-text on a keyword name, even when the platform name lookup fails', async () => {
+    const recorder = make(ENFORCE, fakeState(), {
+      botNames: async () => {
+        throw new Error('discord down');
+      },
+      classify: classifierAnswer(0.1),
+      nameKeywords: ['canis', '倏昱'],
+    });
+
+    await expect(recorder.initiate(observation({}, { text: 'canis 你看下这个' }))).resolves.toEqual(
+      { addressed: true, reason: 'named-in-text' },
+    );
+    await expect(
+      recorder.initiate(observation({}, { id: 'm-2', text: '倏昱在吗' })),
+    ).resolves.toEqual({ addressed: true, reason: 'named-in-text' });
+  });
+
+  it('hands the classifier the keyword names beside the platform names', async () => {
+    const classify = classifierAnswer(0.9);
+    const recorder = make(WITH_CLASSIFIER('enforce'), fakeState(spokeRecently()), {
+      classify,
+      nameKeywords: ['canis'],
+    });
+
+    await recorder.initiate(observation({}, { text: 'what about the release?' }));
+
+    const [input] = (classify as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(input.conversation.botNames).toEqual([BOT_NAME, 'canis']);
+  });
+
+  it('keeps a keyword-name wake from being vetoed by owner presence; a plain keyword still is', async () => {
+    const state = fakeState({ ownerLastSpokeAt: Date.now() - 10_000, silentWakes: 0 });
+    const recorder = make(OWNER_AROUND, state, { nameKeywords: ['canis'] });
+    const keywordWake = (text: string) =>
+      observation({ outcome: 'wake', reason: 'watch-keyword' }, { ...SOMEONE, text });
+
+    expect(
+      (await recorder.judge(keywordWake('canis, can you check the build?')))?.verdict,
+    ).not.toBe('deny');
+    expect(await recorder.judge(keywordWake('the mobile build is broken'))).toMatchObject({
+      reason: 'owner-present',
+      verdict: 'deny',
+    });
   });
 });
 

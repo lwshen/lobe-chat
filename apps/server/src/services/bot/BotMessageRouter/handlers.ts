@@ -22,15 +22,17 @@ import {
   getBotReplyLocale,
   type GroupSettings,
   type GuestSettings,
-  messageMatchesWatchKeyword,
   normalizeBotReactionMode,
   normalizeBotReplyLocale,
+  normalizeBotReplyPlacementMode,
   type PlatformClient,
   type UserAllowlist,
 } from '../platforms';
 import { renderThrownAgentError } from '../renderThrownError';
-import { createWakeClassify, createWakeProactiveJudge } from '../wake/classify';
+import { createWakeClassify } from '../wake/classify';
+import { createWakeDutyJudge } from '../wake/dutyJudge';
 import { createWakeIdentityLoader } from '../wake/identity';
+import { createReplyOpener } from '../wake/opener';
 import { resolveWakeScheduler } from '../wake/scheduler';
 import type { WakeMessageLike } from '../wake/signal';
 import { createAccessGate } from './accessGate';
@@ -43,9 +45,11 @@ import {
   mentionRequiredAnnouncedKey,
   PARTICIPANTS_TTL_MS,
 } from './participants';
-import type { BotCommand, ResolvedAgentInfo } from './types';
+import { createReplyOpening } from './replyOpening';
+import type { BotCommand, BotHandlerContext, ResolvedAgentInfo } from './types';
 import {
   applyWatchKeywordInstructions,
+  burstMatchesWatchKeyword,
   dispatchTextCommand,
   mergeSkippedMessages,
   summarizeMessageAttachments,
@@ -65,6 +69,9 @@ const log = debug('lobe-server:bot:message-router');
  * Wire the Chat SDK handlers for one registered bot: @-mentions, subscribed
  * threads, slash / text commands and the DM / watch-keyword catch-all. Every
  * entry point shares one access gate (see `./accessGate`).
+ *
+ * Returns what the platform's Chat SDK patches need to know about this bot: whether it decides
+ * itself where a reply goes, so the Discord adapter must not open a thread for an @-mention.
  */
 export function registerHandlers(
   bot: Chat<any>,
@@ -78,7 +85,7 @@ export function registerHandlers(
   },
   /** Reads the shared Redis client lazily (pairing codes). */
   getRedisClient: () => any,
-): void {
+): { deferMentionThread: () => Promise<boolean> } {
   const { agentId, applicationId, platform, userId, workspaceId } = info;
   const bridge = new AgentBridgeService(serverDB, userId, workspaceId);
   const charLimit = (info.settings?.charLimit as number) || undefined;
@@ -105,6 +112,13 @@ export function registerHandlers(
    */
   const watchKeywordEntries = extractWatchKeywordEntries(info.settings);
   const watchKeywords: ReadonlyArray<string> = watchKeywordEntries.map((e) => e.keyword);
+  /**
+   * Keywords the owner marked as the bot's names (`asName`). Saying one calls the bot: the wake is
+   * `named-in-text`, answered at once, and bot-wake counts them among the bot's names.
+   */
+  const nameKeywords: ReadonlyArray<string> = watchKeywordEntries
+    .filter((e) => e.asName)
+    .map((e) => e.keyword);
 
   /**
    * Watch-keyword wakes ride on passive channel monitoring, which is a
@@ -235,19 +249,42 @@ export function registerHandlers(
       workspaceId: workspaceId ?? undefined,
     }),
     db: serverDB,
-    botNames: client.getBotNames && (async () => (await client.getBotNames!()) ?? []),
-    identity: createWakeIdentityLoader({ agentId, db: serverDB, userId }),
-    operatorUserId,
-    proactiveJudge: createWakeProactiveJudge({
+    botNames:
+      client.getBotNames &&
+      (async (platformThreadId) => (await client.getBotNames!(platformThreadId)) ?? []),
+    dutyJudge: createWakeDutyJudge({
       agentId,
       db: serverDB,
       userId,
       workspaceId: workspaceId ?? undefined,
     }),
+    identity: createWakeIdentityLoader({ agentId, db: serverDB, userId }),
+    nameKeywords,
+    operatorUserId,
     platform,
     settings: info.settings,
     userId,
     workspaceId: workspaceId ?? undefined,
+  });
+
+  /**
+   * How the bot opens a reply: an acknowledgement before the run, and the channel or a thread
+   * under the message, on any platform that offers the choice (`PlatformClient.getReplyTargets`).
+   * Decided by the bot only while the owner leaves the placement to it (see `./replyOpening`);
+   * otherwise the previous behaviour.
+   */
+  const replyOpening = createReplyOpening({
+    applicationId,
+    client,
+    isBusy: (platformThreadId) => AgentBridgeService.isThreadActive(platformThreadId),
+    mode: normalizeBotReplyPlacementMode(info.settings?.replyPlacement),
+    opener: createReplyOpener({
+      agentId,
+      db: serverDB,
+      userId,
+      workspaceId: workspaceId ?? undefined,
+    }),
+    rolledOut: wakeRecorder.isRolledOut,
   });
 
   const observationOf = (
@@ -345,6 +382,49 @@ export function registerHandlers(
       observationOf(entryPoint, message, thread, 'skip', 'not-addressed', threadSubscribed),
     );
 
+  /**
+   * Opens the reply to a message that woke the bot (see `replyOpening`), then records the wake with
+   * how it was opened. Recorded under the conversation the message arrived in, even when the reply
+   * moves into a new thread. Swaps `thread.id` when a thread opens.
+   *
+   * Returns the acknowledgement posted before the run, for the agent to continue from.
+   */
+  const startReply: BotHandlerContext['startReply'] = async ({
+    entryPoint,
+    legacyOpensThread,
+    message,
+    rawMessage,
+    reason,
+    thread,
+    threadSubscribed = false,
+    wakeKind,
+  }) => {
+    const observation = observationOf(
+      entryPoint,
+      message,
+      { id: thread.id },
+      'wake',
+      reason,
+      threadSubscribed,
+    );
+    const opening = await replyOpening.open({
+      conversation: () => wakeRecorder.conversation(observation),
+      legacyOpensThread,
+      message: {
+        id: message.id,
+        raw: rawMessage,
+        text: client.sanitizeUserInput?.(message.text ?? '', message) ?? message.text,
+      },
+      thread,
+      wakeKind,
+    });
+    wakeRecorder.record(
+      opening.verdict ? { ...observation, extraVerdicts: [opening.verdict] } : observation,
+    );
+
+    return { openingReply: opening.openingReply, release: opening.release };
+  };
+
   const gateFollowup = createFollowupGate({
     applicationId,
     observe: observe as FollowupGateDeps['observe'],
@@ -406,13 +486,14 @@ export function registerHandlers(
     }
 
     const merged = mergeSkippedMessages(message, context);
-    observe(
-      'onNewMention',
-      merged,
+    const { openingReply, release } = await startReply({
+      entryPoint: 'onNewMention',
+      message: merged,
+      rawMessage: (message as { raw?: unknown }).raw,
+      reason: thread.isDM ? 'direct-message' : 'explicit-mention',
       thread,
-      'wake',
-      thread.isDM ? 'direct-message' : 'explicit-mention',
-    );
+      wakeKind: 'mention',
+    });
     void emitAgentSignalSourceEvent(
       {
         payload: {
@@ -456,6 +537,7 @@ export function registerHandlers(
         charLimit,
         client,
         displayToolCalls,
+        openingReply,
         reactionMode,
         replyLocale,
       });
@@ -471,6 +553,8 @@ export function registerHandlers(
       } catch {
         // best-effort notification
       }
+    } finally {
+      release();
     }
   });
 
@@ -535,12 +619,10 @@ export function registerHandlers(
     // subscribed group thread. Skipped (debounced) siblings are inspected
     // too so a keyword queued behind a non-trigger still fires — same
     // pattern as the mention check above.
-    const matchesWatchKeyword =
-      watchKeywords.length > 0 &&
-      (messageMatchesWatchKeyword(message.text, watchKeywords) ||
-        getSameSenderMessages(message, context?.skipped).some((m) =>
-          messageMatchesWatchKeyword(m.text, watchKeywords),
-        ) === true);
+    const matchesWatchKeyword = burstMatchesWatchKeyword(message, context?.skipped, watchKeywords);
+    // A keyword the owner marked as the bot's name calls the bot rather than just waking it.
+    const calledByKeywordName =
+      matchesWatchKeyword && burstMatchesWatchKeyword(message, context?.skipped, nameKeywords);
 
     // Nobody addressed the bot. With the rules enforcing it may still speak up: its name is in the
     // text, or it spoke lately and the classifier agrees. Judged on the whole burst, as it would run.
@@ -680,7 +762,9 @@ export function registerHandlers(
         : isSoloBotConversation
           ? 'solo-conversation'
           : matchesWatchKeyword && !isCommand
-            ? 'watch-keyword'
+            ? calledByKeywordName
+              ? 'named-in-text'
+              : 'watch-keyword'
             : (initiation?.reason ?? 'addressed');
     // Only a wake nobody asked for may end in silence; a DM, @mention, command or solo
     // conversation is always answered, exactly as before. Until the bot-wake rollout reaches this
@@ -691,9 +775,9 @@ export function registerHandlers(
       (await gateFollowup({
         entryPoint: 'onSubscribedMessage',
         merged,
-        // Already judged by `initiate`: do not judge again. A message addressed to the bot does
-        // not wait for the scheduler's collect window.
-        immediate: initiation?.addressed,
+        // Already judged by `initiate`: do not judge again. A message addressed to the bot (by
+        // name, keyword names included) does not wait for the scheduler's collect window.
+        immediate: initiation?.addressed || wakeReason === 'named-in-text',
         initiated: !!initiation,
         parked: [...(context?.skipped ?? []), message],
         thread,
@@ -702,7 +786,15 @@ export function registerHandlers(
     ) {
       return;
     }
-    observe('onSubscribedMessage', merged, thread, 'wake', wakeReason, true);
+    const { openingReply, release } = await startReply({
+      entryPoint: 'onSubscribedMessage',
+      message: merged,
+      rawMessage: (message as { raw?: unknown }).raw,
+      reason: wakeReason,
+      thread,
+      threadSubscribed: true,
+      wakeKind,
+    });
     void emitAgentSignalSourceEvent(
       {
         payload: {
@@ -747,8 +839,9 @@ export function registerHandlers(
         charLimit,
         client,
         displayToolCalls,
+        duty: wakeReason === 'in-duty' ? { matched: initiation?.duty } : undefined,
         named: wakeReason === 'named-in-text',
-        proactive: wakeReason === 'proactive-help',
+        openingReply,
         reactionMode,
         replyLocale,
         wakeKind,
@@ -765,6 +858,8 @@ export function registerHandlers(
       } catch {
         // best-effort notification
       }
+    } finally {
+      release();
     }
   });
 
@@ -796,7 +891,9 @@ export function registerHandlers(
     dmSettings,
     gateFollowup,
     initiate,
+    isBotWakeRolledOut: wakeRecorder.isRolledOut,
     isMessageMonitoringAllowed,
+    nameKeywords,
     observeBurst,
     operatorUserId,
     passGatesOrNotify,
@@ -805,9 +902,12 @@ export function registerHandlers(
     remember,
     reactionMode,
     serverDB,
+    startReply,
     userId,
     watchKeywordEntries,
     watchKeywords,
     workspaceId,
   });
+
+  return { deferMentionThread: replyOpening.decidesPlacement };
 }
