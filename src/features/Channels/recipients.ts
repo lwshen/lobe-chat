@@ -2,19 +2,23 @@ import type { ChannelMemberActorType } from '@lobechat/types';
 
 export interface ComposerMember {
   actorType: ChannelMemberActorType;
+  /** Seeds the generated avatar of an Agent without one of its own. */
+  agentId?: string | null;
   avatar: string;
   id: string;
   name: string;
 }
 
 /**
- * - `all`: no mentions on the main conversation, so every Agent replies.
+ * - `automatic`: the decision model selects from the eligible Agents.
+ * - `all`: routing is off and no Agent is mentioned, so every eligible Agent replies.
  * - `named`: the mentioned Agents, or the Thread's followers.
  * - `peopleOnly`: only people are mentioned, which wakes no Agent.
  * - `noFollowers`: a Thread nobody follows yet; a mention invites an Agent.
  * - `noAgents`: the main conversation has no active Agent.
  */
-export type ComposerRecipientKind = 'all' | 'named' | 'noAgents' | 'noFollowers' | 'peopleOnly';
+export type ComposerRecipientKind =
+  'automatic' | 'all' | 'named' | 'noAgents' | 'noFollowers' | 'peopleOnly';
 
 /**
  * Who replies if the draft is sent now. Mirrors `sendMessage` in the Channel repository:
@@ -23,11 +27,13 @@ export type ComposerRecipientKind = 'all' | 'named' | 'noAgents' | 'noFollowers'
  */
 export const composerRecipients = ({
   defaultRecipientIds,
+  decisionEnabled = false,
   inThread,
   members,
   mentionIds,
 }: {
   defaultRecipientIds: string[];
+  decisionEnabled?: boolean;
   inThread: boolean;
   members: ComposerMember[];
   mentionIds: string[];
@@ -40,5 +46,6 @@ export const composerRecipients = ({
   }
   const defaults = agents.filter((agent) => defaultRecipientIds.includes(agent.id));
   if (!defaults.length) return { agents: [], kind: inThread ? 'noFollowers' : 'noAgents' };
+  if (decisionEnabled) return { agents: [], kind: 'automatic' };
   return { agents: defaults, kind: !inThread && defaults.length > 1 ? 'all' : 'named' };
 };

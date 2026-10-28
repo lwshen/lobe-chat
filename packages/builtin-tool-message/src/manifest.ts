@@ -211,7 +211,7 @@ const botSettingsSchema = {
     },
     botWakeDutiesThreshold: {
       description:
-        'How sure the bot must be that a message falls within botWakeDuties before it steps in, 0..1 (default 0.8). Higher = steps in less often.',
+        'How sure the bot must be that a message falls within botWakeDuties before it steps in, 0..1 (default 0.65). Higher = steps in less often.',
       maximum: 1,
       minimum: 0,
       type: 'number',

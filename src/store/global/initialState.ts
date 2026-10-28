@@ -208,7 +208,7 @@ export interface SystemStatus {
    */
   agentListSidebarSectionCollapsed?: boolean;
   /**
-   * View mode of the agent view-all page (card grid vs table list)
+   * View mode of the agent view-all page (badge-wall card grid vs table list); defaults to card
    */
   agentListViewMode?: 'card' | 'list';
   /**
@@ -224,6 +224,12 @@ export interface SystemStatus {
    * number of agents (defaultList) to display
    */
   agentPageSize?: number;
+  /**
+   * Sidebar groups folded in the task assignee picker, keyed by group id.
+   * Nested booleans so the lodash `merge` in `updateSystemStatus` replaces
+   * scalars instead of index-merging arrays.
+   */
+  assigneeAgentSelectorCollapsedGroups?: Record<string, boolean>;
   chatInputHeight?: number;
   /**
    * Which topicGroups are collapsed, bucketed by group mode. We persist the
@@ -367,6 +373,11 @@ export interface SystemStatus {
    */
   projectTopicSubGroupModeByGroup?: Record<string, ProjectTopicSubGroupMode>;
   readNotificationSlugs?: string[];
+  /**
+   * Agents this device last picked as a task assignee, newest first, keyed by
+   * workspace id (`personal` outside a workspace). See `pushRecentAssignee`.
+   */
+  recentAssigneeAgentIds?: Record<string, string[]>;
   /**
    * number of recent items to display
    */
@@ -578,7 +589,7 @@ export const INITIAL_STATUS = {
   agentBuilderPanelWidth: 360,
   agentListExpandedGroupKeys: [] as string[],
   agentListSidebarSectionCollapsed: false,
-  agentListViewMode: 'list' as const,
+  agentListViewMode: 'card' as const,
   agentListViewOptions: {
     groupBy: 'none' as const,
     orderBy: 'updatedAt' as const,
@@ -635,7 +646,12 @@ export const INITIAL_STATUS = {
   showFilePanel: true,
   showHomePortrait: true,
   showHotkeyHelper: false,
-  showHomeRail: true,
+  /**
+   * One column by default: most people prefer the single-column Home. Only
+   * browsers without a stored preference get this, because `updateSystemStatus`
+   * persists the whole status, so earlier sessions already stored `true`.
+   */
+  showHomeRail: false,
   showImagePanel: true,
   showImageTopicPanel: true,
   showAgentBuilderPanel: false,

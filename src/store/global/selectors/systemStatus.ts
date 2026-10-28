@@ -415,7 +415,7 @@ const showSystemRole = (s: GlobalState) => s.status.showSystemRole;
 const mobileShowTopic = (s: GlobalState) => s.status.mobileShowTopic;
 const mobileShowPortal = (s: GlobalState) => s.status.mobileShowPortal;
 const showAgentBuilderPanel = (s: GlobalState) => s.status.showAgentBuilderPanel;
-const showHomeRail = (s: GlobalState) => s.status.showHomeRail ?? true;
+const showHomeRail = (s: GlobalState) => s.status.showHomeRail ?? false;
 const showHomePortrait = (s: GlobalState) => s.status.showHomePortrait ?? true;
 const hiddenHomeWidgets = (s: GlobalState): string[] => s.status.hiddenHomeWidgets ?? [];
 const homeGoalsCollapsed = (s: GlobalState): boolean => s.status.homeGoalsCollapsed ?? false;
@@ -456,7 +456,7 @@ const portalWidths = (s: GlobalState) => s.status.portalWidths;
 const filePanelWidth = (s: GlobalState) => s.status.filePanelWidth;
 const groupAgentBuilderPanelWidth = (s: GlobalState) => s.status.groupAgentBuilderPanelWidth || 360;
 const imagePanelWidth = (s: GlobalState) => s.status.imagePanelWidth;
-const agentListViewMode = (s: GlobalState) => s.status.agentListViewMode || 'list';
+const agentListViewMode = (s: GlobalState) => s.status.agentListViewMode || 'card';
 const DEFAULT_AGENT_DOCUMENT_SORT: AgentDocumentSort = {
   by: 'name',
   foldersFirst: true,

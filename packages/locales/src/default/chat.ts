@@ -973,7 +973,7 @@ export default {
     'The current model is no longer available. Choose another model to continue.',
   'input.viewOnlyAgent': 'You can only view this agent',
   'input.viewOnlyGroup': 'You can only view this group',
-  'input.heteroPlus.tooltip': 'Formatting and scheduling',
+  'input.heteroPlus.tooltip': 'Attachments, formatting and scheduling',
   'input.more': 'More',
   'input.notice.summary_one': '{{count}} input notice',
   'input.notice.summary_other': '{{count}} input notices',
@@ -2329,6 +2329,12 @@ export default {
   'goalEmpty.title': 'Chase goals without limits',
   'goalList.acceptanceProgress': '{{passed}}/{{total}} passed',
   'goalList.agentRuns': '{{count}} runs',
+  'goalList.contextMenu.copyConfirm': 'Copy',
+  'goalList.contextMenu.copyDescription':
+    'Copies the goal, its budget and acceptance criteria as a new draft. Progress, tasks and the agent are not copied; pick an agent there and start it.',
+  'goalList.contextMenu.copyFailed': 'Failed to copy goal',
+  'goalList.contextMenu.copySuccess': 'Goal copied',
+  'goalList.contextMenu.copyTitle': 'Copy goal',
   'goalList.empty': 'No goals yet',
   'goalList.taskProgress': '{{done}}/{{total}} tasks done',
   'goalList.findings': '{{count}} findings',
@@ -2666,15 +2672,13 @@ export default {
   'goalProcess.decision.effect.releaseBatch':
     'Release the next wave on the current recipe. Each later wave goes to the main Agent, which releases it or brings it back to you.',
   'goalProcess.signOff.islandSubtitle': 'is done and waiting for your sign-off',
-  'goalProcess.signOff.question': 'Do you accept what this goal delivered?',
+  'goalProcess.signOff.islandSummary':
+    'Goal-level acceptance passed. Read the delivery report, then sign off or request changes.',
+  'goalProcess.signOff.openReport': 'View details',
   'goalProcess.signOff.description': 'Goal-level acceptance passed. Your sign-off closes the goal.',
   'goalProcess.signOff.accept': 'Sign off',
   'goalProcess.signOff.acceptEffect': 'Close the goal as delivered.',
   'goalProcess.signOff.requestChanges': 'Request changes',
-  'goalProcess.signOff.requestChangesEffect':
-    'Send it back to the Agent. Say what to change in the notes.',
-  'goalProcess.signOff.notePlaceholder':
-    'What should change? The Agent reworks the delivery with this.',
   'goalProcess.signOff.accepted': 'Signed off',
   'goalProcess.signOff.sentBack': 'Sent back for changes',
   'goalProcess.gate.title.agentQuestion': "Answer the main Agent's question",
@@ -3319,6 +3323,8 @@ export default {
   'upload.preview.status.processing': 'Processing file...',
   'upload.preview.status.success': 'Upload complete',
   'upload.preview.status.uploading': 'Uploading file...',
+  'upload.validation.heteroImageNotSupported':
+    "{{name}} can't read images, so {{file}} was not added. Use an agent that supports images instead.",
   'upload.validation.mediaNotSupported':
     'The current model cannot read these media files, so they were not added: {{files}}. Switch to a model that supports them, or upload a different file type.',
   'upload.validation.unsupportedFileType':

@@ -332,6 +332,34 @@ describe('AgentWorkingSidebar — controlled panel width', () => {
     expect(screen.queryByText('/Users/me/project')).not.toBeInTheDocument();
     expect(filesProps.current).toBeUndefined();
   });
+
+  it('shows Review on web for a topic worktree the remote device does not list', () => {
+    platform.isDesktop = false;
+    agentStore.activeAgentId = 'agent';
+    effectiveConfig.agencyConfig = { boundDeviceId: 'remote-device', executionTarget: 'device' };
+    // The device's workingDirs track a different worktree, so the lookup misses.
+    reviewState.repoType = undefined;
+    reviewState.workingDirectory = '/repo-feature';
+    chatStore.activeTopicId = 'topic-wt';
+    chatStore.topicDetailMap = {
+      'topic-wt': {
+        id: 'topic-wt',
+        metadata: {
+          workingDirectoryConfig: {
+            git: { activeWorktree: '/repo-feature', branch: 'feature', isWorktree: true },
+            path: '/repo',
+            repoType: 'github',
+          },
+        },
+      },
+    };
+    globalStore.status.workingSidebarTab = 'works';
+    localStorageState.openTabsByContext = { 'topic:topic-wt': ['works', 'review'] };
+
+    render(<AgentWorkingSidebar />);
+
+    expect(screen.getByRole('button', { name: 'workingPanel.review.title' })).toBeInTheDocument();
+  });
 });
 
 describe('Pull request Markdown', () => {
