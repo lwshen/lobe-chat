@@ -5,8 +5,8 @@ import { composioStoreSelectors, lobehubSkillStoreSelectors } from '@/store/tool
 import { ComposioServerStatus } from '@/store/tool/slices/composioStore/types';
 import { LobehubSkillStatus } from '@/store/tool/slices/lobehubSkillStore/types';
 
-import { AgentManagerRuntime } from '../AgentManagerRuntime';
 import type { IAgentService, IDiscoverService } from '../types';
+import { AgentManagerRuntime } from './index';
 
 /**
  * The `@/store/agent` mock below recreates a fresh object (with fresh
@@ -331,6 +331,29 @@ describe('AgentManagerRuntime', () => {
         hasMore: false,
         source: 'user',
         totalCount: 2,
+      });
+    });
+
+    it('should surface the agent name next to its title', async () => {
+      vi.mocked(mockAgentService.queryAgents).mockResolvedValue([
+        {
+          id: 'agt_dario',
+          name: 'Dario 任务队列版',
+          title: '美国100刀',
+          description: null,
+          avatar: null,
+          backgroundColor: null,
+        },
+      ] as any);
+      vi.mocked(mockAgentService.countAgents).mockResolvedValue(1);
+
+      const result = await runtime.searchAgents({ keyword: 'dario', source: 'user' });
+
+      expect(result.content).toContain(
+        '<agent id="agt_dario" name="Dario 任务队列版" title="美国100刀" origin="workspace" />',
+      );
+      expect(result.state).toMatchObject({
+        agents: [expect.objectContaining({ name: 'Dario 任务队列版', title: '美国100刀' })],
       });
     });
 

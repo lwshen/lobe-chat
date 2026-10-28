@@ -271,8 +271,8 @@ describe('channel settings form: bot-wake options', () => {
     expect(area).toBeInTheDocument();
     expect(Number(area.getAttribute('rows'))).toBeGreaterThanOrEqual(8);
     expect(Number(area.getAttribute('maxlength'))).toBeGreaterThanOrEqual(2000);
-    // Multi-line next to the duties only: the others stay single-line.
-    expect(container.querySelectorAll('textarea')).toHaveLength(2);
+    // Multi-line next to the duties and the reply style only: the others stay single-line.
+    expect(container.querySelectorAll('textarea')).toHaveLength(3);
   });
 
   it('opens the wake options with the duties: a text area, empty by default, and its dial', () => {
@@ -394,5 +394,33 @@ describe('channel settings form: bot-wake options', () => {
 
       expect(screen.queryByRole('button', { name: en['channel.module.save'] })).toBeNull();
     });
+  });
+});
+
+describe('channel settings form: reply placement', () => {
+  it('lists where to reply as choices that each say what they do, like who may DM it', () => {
+    state.copy = zh;
+    state.featureFlags = { enableBotWake: true };
+
+    render(<Harness activeTab="reply" />);
+
+    const placement = screen.getByRole('radiogroup', { name: zh['channel.replyPlacement'] });
+    // Both consequences are readable without opening a dropdown.
+    expect(placement).toHaveTextContent(zh['channel.replyPlacementAgentHint']);
+    expect(placement).toHaveTextContent(zh['channel.replyPlacementThreadHint']);
+    expect(placement).toHaveTextContent(zh['channel.access.recommended']);
+    expect(screen.queryByRole('combobox', { name: zh['channel.replyPlacement'] })).toBeNull();
+
+    const agent = screen.getByRole('radio', {
+      name: new RegExp(zh['channel.replyPlacementAgent']),
+    });
+    const thread = screen.getByRole('radio', {
+      name: new RegExp(zh['channel.replyPlacementThread']),
+    });
+    expect(agent).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(thread);
+    expect(thread).toHaveAttribute('aria-checked', 'true');
+    expect(agent).toHaveAttribute('aria-checked', 'false');
   });
 });
