@@ -305,6 +305,7 @@ export const bundleRouter = router({
             ...(task
               ? {
                   taskId: task.id,
+                  taskIdentifier: task.identifier,
                   deliveryAcceptanceId: storedRepair.deliveryAcceptanceId,
                 }
               : {}),
