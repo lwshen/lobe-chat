@@ -1258,9 +1258,11 @@ export default {
   'cliOverloadedGuide.retryHint':
     'Wait a few seconds and retry. If it keeps failing, the provider may be having a wider incident.',
   'cliOverloadedGuide.title': '{{name}} is temporarily overloaded',
+  'cliRateLimitGuide.actions.collapse': 'Collapse details',
   'cliRateLimitGuide.actions.handoff': 'Hand off to another Agent',
   'cliRateLimitGuide.actions.openSystemTools': 'Open System Tools',
   'cliRateLimitGuide.actions.retry': 'Retry message',
+  'cliRateLimitGuide.actions.showDetails': 'Show details',
   'cliRateLimitGuide.afterReset':
     'This account has reached its current usage limit. You can continue after {{resetAt}}.',
   'cliRateLimitGuide.afterResetWithLimitType':
@@ -3537,6 +3539,19 @@ export default {
   'workingPanel.browser.tool.screenshot': 'Captured screenshot',
   'workingPanel.browser.tool.scroll': 'Scrolled page',
   'workingPanel.browser.tool.snapshot': 'Read page elements',
+  'workingPanel.claudeMemory.empty.description':
+    'Claude Code saves what is worth remembering here as it works in this project.',
+  'workingPanel.claudeMemory.empty.title': "Claude hasn't saved anything for this project yet",
+  'workingPanel.claudeMemory.group.feedback': 'Feedback',
+  'workingPanel.claudeMemory.group.index': 'Index',
+  'workingPanel.claudeMemory.group.other': 'Other',
+  'workingPanel.claudeMemory.group.project': 'Project',
+  'workingPanel.claudeMemory.group.reference': 'References',
+  'workingPanel.claudeMemory.group.user': 'About you',
+  'workingPanel.claudeMemory.indexHint': 'Loaded at the start of every session',
+  'workingPanel.claudeMemory.location': 'Saved in {{path}}',
+  'workingPanel.claudeMemory.refresh': 'Refresh',
+  'workingPanel.claudeMemory.title': 'Claude Memory',
   'workingPanel.openMenu.configuration': 'Configuration',
   'workingPanel.openMenu.terminal': 'Terminal',
   'workingPanel.openMenu.title': 'Open workspace panel',
