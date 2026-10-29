@@ -118,6 +118,9 @@ export class PageCollabProvider extends Emitter {
   private bootstrapping = false;
   private conflicted = false;
   private synced = false;
+  // The hub refuses anything for the document until its subscribe settles, and a
+  // refusal before the first sync fails the join.
+  private subscribed = false;
   private failed = false;
   private subscribedAt = 0;
   private syncTimer: ReturnType<typeof setTimeout> | undefined;
@@ -129,9 +132,10 @@ export class PageCollabProvider extends Emitter {
     private readonly events: PageCollabProviderEvents = {},
   ) {
     super();
-    this.awareness = new PageCollabAwareness(doc.clientID, (state) =>
-      this.channel?.send({ clientID: doc.clientID, documentId, state, type: 'doc_awareness' }),
-    );
+    this.awareness = new PageCollabAwareness(doc.clientID, (state) => {
+      if (!this.subscribed) return;
+      this.channel?.send({ clientID: doc.clientID, documentId, state, type: 'doc_awareness' });
+    });
     doc.on('update', this.handleLocalUpdate);
   }
 
@@ -190,6 +194,7 @@ export class PageCollabProvider extends Emitter {
 
   private subscribe = () => {
     this.synced = false;
+    this.subscribed = false;
     this.subscribedAt = Date.now();
     clearTimeout(this.syncTimer);
     this.syncTimer = setTimeout(() => {
@@ -206,6 +211,7 @@ export class PageCollabProvider extends Emitter {
   private handleStatus = (status: GatewayMuxStatus) => {
     if (status !== 'connected') {
       this.synced = false;
+      this.subscribed = false;
       this.emit('status', { status: status === 'connecting' ? 'reconnecting' : status });
       this.events.onStatus?.('offline');
     }
@@ -243,7 +249,6 @@ export class PageCollabProvider extends Emitter {
     queueMicrotask(() => {
       if (!this.bootstrapPending) return;
       this.bootstrapPending = false;
-      this.bootstrapping = true;
       this.events.onBootstrap?.();
     });
   }
@@ -262,6 +267,7 @@ export class PageCollabProvider extends Emitter {
           this.events.onReset?.('epoch');
           return;
         }
+        this.subscribed = true;
         this.bootstrapping = false;
         this.epoch = message.epoch;
         this.events.onAccess?.(message.access);
@@ -274,6 +280,9 @@ export class PageCollabProvider extends Emitter {
         }
         this.resendPending();
         if (message.bootstrap || message.bootstrapped) {
+          // The binding seeds an empty root as soon as it hears `sync`, before
+          // the bootstrap below runs; that write is part of our bootstrap too.
+          this.bootstrapping = message.bootstrap;
           this.markSynced();
           if (message.bootstrap) this.scheduleBootstrap();
         } else {

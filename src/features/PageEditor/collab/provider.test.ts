@@ -65,6 +65,23 @@ describe('PageCollabProvider', () => {
     expect(onSync).toHaveBeenCalledWith(true);
   });
 
+  it('holds its awareness until the room answered the subscribe', () => {
+    const { deliver, mux, ready, sent } = createMux();
+    const provider = new PageCollabProvider('doc_1', new Y.Doc(), mux as any);
+
+    provider.connect();
+    ready();
+    provider.awareness.setLocalState({ user: { name: 'A' } });
+
+    expect(sent.filter((m) => m.type === 'doc_awareness')).toEqual([]);
+
+    deliver(synced());
+
+    expect(sent.filter((m) => m.type === 'doc_awareness')).toMatchObject([
+      { state: { user: { name: 'A' } }, type: 'doc_awareness' },
+    ]);
+  });
+
   it('asks the editor to bootstrap when it holds the claim', async () => {
     const { deliver, mux, ready } = createMux();
     const onBootstrap = vi.fn();
@@ -221,6 +238,25 @@ describe('PageCollabProvider', () => {
     deliver({ documentId: 'doc_1', seq: 1, type: 'doc_ack' });
     doc.getText('t').insert(0, '+');
     expect(updates()[2].bootstrap).toBeUndefined();
+  });
+
+  it('flags what the editor writes into an empty room on sync while holding the claim', () => {
+    const { deliver, mux, ready, sent } = createMux();
+    const doc = new Y.Doc();
+    const provider = new PageCollabProvider('doc_1', doc, mux as any);
+    provider.on('sync', () => doc.getText('t').insert(0, 'root paragraph'));
+
+    provider.connect();
+    ready();
+    deliver(
+      synced({
+        bootstrap: true,
+        bootstrapped: false,
+        update: b64(Y.encodeStateAsUpdate(new Y.Doc())),
+      }),
+    );
+
+    expect(sent.filter((m) => m.type === 'doc_update').map((m) => m.bootstrap)).toEqual([true]);
   });
 
   it('resets once when it lost the bootstrap race', () => {

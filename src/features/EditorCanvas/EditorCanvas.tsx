@@ -2,7 +2,7 @@
 
 import { type IEditor, type SlashOptions } from '@lobehub/editor';
 import type { ChatInputActionsProps, Editor, EditorProps } from '@lobehub/editor/react';
-import { type CSSProperties } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import { memo } from 'react';
 
 import SafeBoundary from '@/components/ErrorBoundary';
@@ -147,6 +147,12 @@ export interface EditorCanvasProps {
    * Forwarded to the underlying Editor.
    */
   onPressEnter?: (props: { editor: IEditor; event: KeyboardEvent }) => boolean | void;
+
+  /**
+   * Shown in place of the editor while the body is not in it yet (a room still
+   * syncing); the editor stays mounted behind it (documentId mode only).
+   */
+  pendingBody?: ReactNode;
 
   /**
    * Placeholder text for empty editor
