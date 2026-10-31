@@ -60,6 +60,7 @@ class ChannelService {
     fileIds?: string[];
     mentions: string[];
     requestKey: string;
+    replyToId?: string;
     rootMessageId?: string;
     threadId?: string | null;
   }) => lambdaClient.channel.send.mutate(input);
