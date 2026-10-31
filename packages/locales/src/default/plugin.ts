@@ -74,6 +74,7 @@ export default {
   'builtins.lobe-agent-management.apiName.getAgentDetail': 'Get agent detail',
   'builtins.lobe-agent-management.apiName.installPlugin': 'Install Skill',
   'builtins.lobe-agent-management.apiName.searchAgent': 'Search agents',
+  'builtins.lobe-agent-management.apiName.searchMarketTools': 'Search Skill market',
   'builtins.lobe-agent-management.apiName.updateAgent': 'Update agent',
   'builtins.lobe-agent-management.apiName.updatePrompt': 'Update prompt',
   'builtins.lobe-agent-management.inspector.callAgent.sync': 'Calling:',
