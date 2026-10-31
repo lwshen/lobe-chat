@@ -984,7 +984,6 @@ export class GoalGraphModel {
           and(eq(goalNodeDecisions.id, ownedDecision.id), eq(goalNodeDecisions.status, 'pending')),
         )
         .returning();
-      /* v8 ignore next -- unreachable: ownedGoal() holds the goal row FOR UPDATE and every writer of a decision's status takes that lock first, so the pending row selected above is still pending */
       if (!decision) return undefined;
       await tx
         .update(goalNodes)
@@ -1064,7 +1063,6 @@ export class GoalGraphModel {
           and(eq(goalNodeDecisions.id, ownedDecision.id), eq(goalNodeDecisions.status, 'pending')),
         )
         .returning();
-      /* v8 ignore next -- unreachable: ownedGoal() holds the goal row FOR UPDATE and every writer of a decision's status takes that lock first, so the pending row selected above is still pending */
       if (!decision) return undefined;
       await tx
         .update(goalNodes)
