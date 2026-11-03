@@ -1,0 +1,151 @@
+name: Sync Upstream Release
+
+# Build upstream (lobehub/lobehub) releases & pre-releases as Docker images in this fork.
+#
+# Why polling: GitHub never sends us events for another repo's releases, so we poll the
+# upstream releases API on a schedule and dispatch a build for anything we have not built yet.
+#
+# Three things make this work (do NOT "simplify" them away):
+#   1. We never push the upstream tag into this fork. GitHub evaluates a tag push against the
+#      workflow files in the *pushed* tree, so it would either be rejected — the default
+#      GITHUB_TOKEN can never hold the `workflows` permission (there is no such key in the
+#      `permissions:` block) and upstream's .github/workflows/release-docker.yml differs from
+#      our customised copy — or, if pushed with a PAT, wake up upstream's test.yml / e2e.yml /
+#      release.yml, all of which trigger on `push`. Instead we send a repository_dispatch and
+#      let release-docker.yml check the upstream ref out directly.
+#   2. secrets.RELEASE_PAT — a repository_dispatch sent with the default GITHUB_TOKEN does NOT
+#      start a workflow run (GitHub's recursion guard). The dispatch MUST use a PAT.
+#      Fine-grained PAT needs Contents: Read and write on this fork.
+#   3. repository_dispatch always runs the workflow file from the default branch (canary),
+#      which is where our customised release-docker.yml / release-docker-acr.yml live. Keep
+#      them there.
+#
+# Dedupe asks ghcr whether the image tag already exists, so a build that failed is retried on
+# the next run instead of being silently skipped.
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: Only build upstream releases published within this many days (guards against mass-building history on first run)
+        required: false
+        default: '7'
+
+concurrency:
+  group: sync-upstream-release
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: lobehub/lobehub
+  LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
+  # keep in sync with REGISTRY_IMAGE in release-docker.yml (without the ghcr.io/ prefix)
+  GHCR_REPO: lwshen/lobe-chat
+
+jobs:
+  mirror:
+    name: Mirror upstream releases
+    runs-on: ubuntu-latest
+    if: ${{ github.event.repository.fork }}
+    steps:
+      - name: Detect upstream releases with no image yet
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          cutoff=$(date -u -d "${LOOKBACK_DAYS} days ago" +%s)
+
+          # anonymous pull token — the package is public, so no credentials are involved
+          ghcr_token=$(curl -sfSL "https://ghcr.io/token?service=ghcr.io&scope=repository:${GHCR_REPO}:pull" | jq -r '.token')
+
+          image_published() {
+            local code
+            code=$(curl -sSL -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ${ghcr_token}" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json' \
+              -H 'Accept: application/vnd.docker.distribution.manifest.list.v2+json' \
+              "https://ghcr.io/v2/${GHCR_REPO}/manifests/$1")
+            case "$code" in
+              200) return 0 ;;
+              404) return 1 ;;
+              # anything else means the dedupe check itself is broken — fail loudly instead of
+              # rebuilding every release or skipping all of them
+              *)
+                echo "::error::ghcr returned HTTP $code for ${GHCR_REPO}:$1"
+                exit 1
+                ;;
+            esac
+          }
+
+          # Drafts filtered out, pre-releases kept, sorted oldest-first. Sort explicitly rather
+          # than reversing the response: the API orders by created_at, which interleaves the PR
+          # nightlies with the real releases. Ask for more than we need — upstream cuts a
+          # nightly per push per open PR, and those would otherwise crowd real releases out of
+          # the page before we get to filter them.
+          releases=$(gh api "repos/${UPSTREAM_REPO}/releases?per_page=30")
+          mapfile -t rels < <(echo "$releases" | jq -c 'map(select(.draft == false)) | sort_by(.published_at) | .[]')
+
+          new='[]'
+          for rel in "${rels[@]}"; do
+            tag=$(echo "$rel" | jq -r '.tag_name')
+            published_at=$(echo "$rel" | jq -r '.published_at')
+            version="${tag#v}"
+
+            # upstream cuts one of these on every push to every open PR — not ours to publish
+            case "$tag" in
+              v0.0.0-nightly.*)
+                echo "skip $tag (upstream PR nightly)"
+                continue
+                ;;
+            esac
+            if [ "$(date -u -d "$published_at" +%s)" -lt "$cutoff" ]; then
+              echo "skip $tag (before the ${LOOKBACK_DAYS}-day lookback window)"
+              continue
+            fi
+            if image_published "$version"; then
+              echo "skip $tag (${GHCR_REPO}:${version} already published)"
+              continue
+            fi
+
+            echo "new: $tag"
+            # keep only the fields the build needs, so the step output stays small
+            new=$(echo "$new" | jq -c --argjson r "$rel" --arg v "$version" \
+              '. + [{ref: $r.tag_name, version: $v, prerelease: $r.prerelease, moving: false}]')
+          done
+
+          # `rels` is sorted oldest-first, so the last entry is the newest release. Only it may
+          # move the floating `canary` / `latest` tags — otherwise parallel builds race for them
+          # and whichever finishes last wins.
+          new=$(echo "$new" | jq -c 'if length > 0 then .[-1].moving = true else . end')
+
+          count=$(echo "$new" | jq 'length')
+          echo "found $count release(s) to build"
+          [ "$count" -gt 0 ] && echo "has_new=true" >> "$GITHUB_OUTPUT" || echo "has_new=false" >> "$GITHUB_OUTPUT"
+          echo "items=$new" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch image builds
+        if: steps.detect.outputs.has_new == 'true'
+        env:
+          # PAT, not GITHUB_TOKEN — see note 2 at the top of this file
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          ITEMS: ${{ steps.detect.outputs.items }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::secrets.RELEASE_PAT is not set. A PAT is required — a repository_dispatch sent with GITHUB_TOKEN does not start a workflow run."
+            exit 1
+          fi
+
+          mapfile -t rels < <(echo "$ITEMS" | jq -c '.[]')
+          for rel in "${rels[@]}"; do
+            echo "dispatching build for $(echo "$rel" | jq -r '.ref')"
+            jq -nc --argjson p "$rel" '{event_type: "new-commit", client_payload: $p}' \
+              | gh api "repos/${GITHUB_REPOSITORY}/dispatches" --method POST --input -
+          done
