@@ -1,4 +1,9 @@
 export default {
+  'directMention.progress.elapsed': '{{time}}',
+  'directMention.progress.running': 'Running',
+  'directMention.progress.thinking': 'Thinking…',
+  'directMention.progress.usingTool': 'Using {{name}}…',
+  'directMention.progress.viewFullRecord': 'View full record',
   'sharePage.app.linkCopied': 'Link copied',
   'sharePage.app.open': 'Open app',
   'sharePage.app.help': 'Trouble opening the app?',
@@ -970,6 +975,10 @@ export default {
     'This link now opens a different agent. Switching to it — try again once it opens. Your draft is kept.',
   'input.agentSlugUnconfirmed':
     'Couldn’t confirm which agent this link opens. Check your connection, then try again.',
+  'input.concurrencyLimit':
+    'You have too many agent tasks running at once. Send again when one finishes.',
+  'input.concurrencyLimitWithCount':
+    'Your plan runs up to {{count}} agent tasks at once. Send again when one finishes.',
   'input.costEstimate.creditsPerMillionTokens': '{{credits}} credits/M tokens',
   'input.costEstimate.hint': 'Estimated cost: ~{{credits}} credits',
   'input.costEstimate.inputLabel': 'Input',
@@ -1060,6 +1069,8 @@ export default {
   'mention.category.tools': 'Tools',
   'mention.category.topics': 'Topics',
   'mention.category.workspaceAgents': 'Workspace',
+  'mention.marketInstall.failed':
+    '{{names}} isn’t available right now. The message was not sent; try again.',
   'mention.title': 'Mention Members',
   'messageAction.codexEdit.alreadySubmitting': 'This edit is already being submitted',
   'messageAction.codexEdit.branchFailed':
@@ -1331,6 +1342,17 @@ export default {
   'codexInstallGuide.menuNotification.title': 'Codex CLI not found',
   'codexInstallGuide.reason': 'LobeHub could not start Codex: {{message}}',
   'codexInstallGuide.title': 'Install Codex CLI',
+  'copilotInstallGuide.actions.openDocs': 'Open Install Guide',
+  'copilotInstallGuide.actions.openSystemTools': 'Open System Tools',
+  'copilotInstallGuide.afterInstall':
+    'After installing, run `copilot login`, then retry your message or click Re-detect in System Tools.',
+  'copilotInstallGuide.desc':
+    'GitHub Copilot needs the GitHub Copilot CLI to run locally. Install it and make sure the `copilot` command is available in your PATH.',
+  'copilotInstallGuide.installWithBrew': 'Homebrew (macOS / Linux)',
+  'copilotInstallGuide.installWithNpm': 'Recommended install',
+  'copilotInstallGuide.menuNotification.title': 'GitHub Copilot CLI not found',
+  'copilotInstallGuide.reason': 'LobeHub could not start GitHub Copilot: {{message}}',
+  'copilotInstallGuide.title': 'Install GitHub Copilot CLI',
   'cursorInstallGuide.actions.openDocs': 'Open Install Guide',
   'cursorInstallGuide.actions.openSystemTools': 'Open System Tools',
   'cursorInstallGuide.afterInstall':
@@ -1447,6 +1469,7 @@ export default {
   'newClaudeCodeAgent': 'Add Claude Code',
   'newCodeBuddyAgent': 'Add CodeBuddy',
   'newCodexAgent': 'Add Codex',
+  'newCopilotAgent': 'Add GitHub Copilot',
   'newCursorAgent': 'Add Cursor',
   'newDroidAgent': 'Add Factory Droid',
   'newDevinAgent': 'Add Devin',
@@ -1544,6 +1567,7 @@ export default {
     'DeepSeek Harness agent (dsh CLI) with tools and subagents',
   'connectAgent.providerDesc.codebuddy': 'Tencent coding agent CLI',
   'connectAgent.providerDesc.codex': 'OpenAI coding agent CLI',
+  'connectAgent.providerDesc.copilot': 'GitHub Copilot coding agent CLI',
   'connectAgent.providerDesc.cursor': 'Cursor coding agent CLI',
   'connectAgent.providerDesc.droid': 'Factory coding agent CLI',
   'connectAgent.providerDesc.devin': 'Cognition coding agent CLI',
