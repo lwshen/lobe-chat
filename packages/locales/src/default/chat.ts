@@ -196,6 +196,7 @@ export default {
   'goalBatch.round.reviseEdge': 'Sent back · revise',
   'goalBatch.round.title': 'Round {{revision}}',
   'goalBatch.status.done': 'All done',
+  'goalBatch.status.held': 'Waiting for your release',
   'goalBatch.status.human': '{{count}} need you',
   'goalBatch.status.pending': 'Not started',
   'goalBatch.status.running': 'In progress',
@@ -981,6 +982,15 @@ export default {
   'input.addUser': 'Add a user message',
   'input.agentModeUnsupportedModel':
     'The current model doesn’t support agentic tool calling. Switch to a model with agent capability for the best experience.',
+  'input.agentRunFeeUnfunded.desc':
+    'Each agent run carries a fee, even on your own API key. Top up or upgrade your plan, then send again.',
+  'input.agentRunFeeUnfunded.descOverflow':
+    'Each agent run carries a fee, even on your own API key. Your balance covers it: use your balance, then send again.',
+  'input.agentRunFeeUnfunded.descSubscribe':
+    'Each agent run carries a fee, even on your own API key. Subscribe to a plan, then send again.',
+  'input.agentRunFeeUnfunded.descTopUp':
+    'Each agent run carries a fee, even on your own API key. Top up, then send again.',
+  'input.agentRunFeeUnfunded.title': 'Not enough credits to pay the agent run fee',
   'input.agentSlugMoved':
     'This link now opens a different agent. Switching to it — try again once it opens. Your draft is kept.',
   'input.agentSlugUnconfirmed':
@@ -1967,7 +1977,10 @@ export default {
   'supervisor.todoList.allComplete': 'All tasks completed',
   'supervisor.todoList.title': 'Tasks Completed',
   'tab.groupProfile': 'Group Profile',
+  'tab.backToChat': 'Back to chat',
+  'tab.group.identity': 'Identity',
   'tab.integration': 'IM Bots',
+  'tab.mail': 'Mail',
   'tab.profile': 'Agent Profile',
   'tab.profileBasic': 'Profile',
   'tab.search': 'Search',
@@ -2534,6 +2547,7 @@ export default {
     'Runs still in progress will be stopped and no new tasks will start. You can reopen the goal from this menu.',
   'goalDetail.closeConfirm.canceled.ok': 'Cancel goal',
   'goalDetail.closeConfirm.canceled.title': 'Cancel this goal?',
+  'goalDetail.closeConfirm.failed': 'Couldn’t close this goal. Try again in a moment.',
   'goalDetail.deleteConfirm.content':
     'This goal and its task plan will be permanently deleted. Conversation history is retained.',
   'goalDetail.deleteConfirm.ok': 'Delete goal',
@@ -3783,12 +3797,6 @@ export default {
   'workingPanel.overview.empty':
     'Workspace activity and outputs will appear here as the agent works.',
   'workingPanel.overview.emptyTitle': 'Ready to work',
-  'workingPanel.overview.profile.view': 'View profile',
-  'workingPanel.profile.description': 'About',
-  'workingPanel.profile.model': 'Model',
-  'workingPanel.profile.noDescription': 'No description yet',
-  'workingPanel.profile.tabs.detail': 'Details',
-  'workingPanel.profile.tabs.workspace': 'Workspace',
   'workingPanel.overview.deviceError': 'Could not load the device status',
   'workingPanel.overview.environmentError': 'Could not load the repository status',
   'workingPanel.overview.execution.device': 'Connected device',

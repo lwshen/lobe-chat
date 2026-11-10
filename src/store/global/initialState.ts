@@ -26,7 +26,6 @@ export enum SidebarTabKey {
 export enum ChatSettingsTabs {
   Connector = 'connector',
   Graph = 'graph',
-  Identity = 'identity',
   Opening = 'opening',
   Plugin = 'plugin',
   Prompt = 'prompt',
@@ -490,6 +489,11 @@ export interface SystemStatus {
     showSubTasks: boolean;
     subGroupBy: 'assignee' | 'member' | 'none' | 'priority' | 'status' | `label:${string}`;
   };
+  /**
+   * Home team board: the attention list folded to a slim rail so the timeline
+   * gets the width. Persisted, like the other folded panels.
+   */
+  teamBoardAttentionCollapsed?: boolean;
   /**
    * Height of the chat bottom terminal panel. Persisted so resizing survives remounts.
    */
