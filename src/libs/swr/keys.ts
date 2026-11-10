@@ -245,22 +245,6 @@ export const threadKeys = {
   list: def('thread:list', (topicId: string) => ['thread:list', topicId]),
 };
 
-// ---- recent -------------------------------------------------------------
-export const recentKeys = {
-  /** Home chat-only list; filtering happens before the server-side limit. */
-  topicList: def('recent:topicList', (limit: number, scope: string, view: 'mine' | 'team') => [
-    'recent:topicList',
-    limit,
-    scope,
-    view,
-  ]),
-  trayList: def('recent:trayList', (limit: number, scope: string) => [
-    'recent:trayList',
-    limit,
-    scope,
-  ]),
-};
-
 /**
  * Goal reads that have no local-first projection: the pending queues are live
  * "what needs you" feeds, and the topic link is a discovery poll.
@@ -692,21 +676,6 @@ export const verifyKeys = {
 
 // ---- inbox / notifications ----------------------------------------------
 export const inboxKeys = {
-  navigationCounts: def('inbox:navigationCounts', (workspaceId: string | null) => [
-    'inbox:navigationCounts',
-    workspaceId,
-  ]),
-  notifications: def(
-    'inbox:notifications',
-    // Keyed by context: the server scopes the inbox to the active workspace
-    // (null = personal), so cached pages must never be reused across contexts.
-    (
-      workspaceId: string | null,
-      cursor: string | undefined,
-      category: string | undefined,
-      isRead: boolean | undefined,
-    ) => ['inbox:notifications', workspaceId, cursor, category, isRead],
-  ),
   unreadCount: def('inbox:unreadCount', (workspaceId: string | null) => [
     'inbox:unreadCount',
     workspaceId,
@@ -1008,7 +977,6 @@ export const swrKeys = {
   onboarding: onboardingKeys,
   openInApp: openInAppKeys,
   ragEval: ragEvalKeys,
-  recent: recentKeys,
   recommendations: recommendationsKeys,
   resource: resourceKeys,
   serverConfig: serverConfigKeys,
