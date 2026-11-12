@@ -17,14 +17,8 @@
  *
  * Each factory also exposes `.root` (the namespace string) for `mutate`
  * matchers that compare `key[0]`.
- *
- * Document / page / agent-document keys are defined in
- * `@/services/document/swrKeys` (already a factory, widely imported) and
- * re-exported here so the whole set is reachable from one place.
  */
 import { type ConversationContext } from '@lobechat/types';
-
-import { agentDocumentSWRKeys } from '@/services/document/swrKeys';
 
 type KeyFactory<A extends unknown[]> = ((...args: A) => readonly unknown[]) & { root: string };
 
@@ -285,23 +279,6 @@ export const workKeys = {
   ),
 };
 
-// ---- brief --------------------------------------------------------------
-// The unresolved brief feed no longer has an SWR key: it moved onto
-// `local-replica` (`briefList`, partitioned by identity scope). Only the
-// day-scoped news digest still reads through SWR.
-export const briefKeys = {
-  /**
-   * Day-scoped news digest (`insight` + `result`, resolved included), keyed by
-   * the viewer's local day (`YYYY-MM-DD`) on top of the identity scope.
-   */
-  news: def('brief:news', (isLogin: boolean, scope: string, day: string) => [
-    'brief:news',
-    isLogin,
-    scope,
-    day,
-  ]),
-};
-
 // ---- agent config / available / search ----------------------------------
 export const agentConfigKeys = {
   search: def('agent:search', (keyword?: string) => ['agent:search', keyword]),
@@ -334,34 +311,6 @@ export const videoKeys = {
 // ---- serverConfig -------------------------------------------------------
 export const serverConfigKeys = {
   get: 'serverConfig:get' as const,
-};
-
-// ---- discover (marketplace) ---------------------------------------------
-// NOTE: discover/eval/ragEval/knowledgeBase/device/userMemory/file prefixes
-// are deliberately kept OUT of `CACHE_TIERS`
-// (see localStorageProvider.ts) so this key-convergence introduces no new
-// persistence — they stay memory-only exactly as before.
-export const discoverKeys = {
-  // -- marketplace detail "related agents" lists (UI) --
-  mcpAgents: def('discover:mcpAgents', (identifier: string, page: number) => [
-    'discover:mcpAgents',
-    identifier,
-    page,
-  ]),
-  skillAgents: def('discover:skillAgents', (identifier: string, page: number) => [
-    'discover:skillAgents',
-    identifier,
-    page,
-  ]),
-  skillStoreMarketSkills: def(
-    'discover:skillStoreMarketSkills',
-    (locale: string, keywords: string, page: number) => [
-      'discover:skillStoreMarketSkills',
-      locale,
-      keywords,
-      page,
-    ],
-  ),
 };
 
 // ---- agent eval ---------------------------------------------------------
@@ -528,7 +477,7 @@ export const fileKeys = {
 // =========================================================================
 // UI-layer keys (features / routes / components). Prefixes below stay
 // memory-only unless explicitly listed in `CACHE_TIERS`. Names avoid colliding
-// with cached prefixes — e.g. share/topicInfo is `share:` not `topic:`, portal
+// with cached prefixes — e.g. share/topic is `share:` not `topic:`, portal
 // header is `portal:` not `document:`.
 // =========================================================================
 
@@ -553,70 +502,20 @@ export const apiKeyKeys = {
   list: def('apiKey:list', () => ['apiKey:list']),
 };
 
-// ---- stats (settings/stats + user header counts) ------------------------
-export const statsKeys = {
-  agentUsageStat: def(
-    'stats:agentUsageStat',
-    (agentId: string, startAt: string, endAt: string, granularity: string) => [
-      'stats:agentUsageStat',
-      agentId,
-      startAt,
-      endAt,
-      granularity,
-    ],
-  ),
-  agents: def('stats:agents', () => ['stats:agents']),
-  countAgents: def('stats:countAgents', () => ['stats:countAgents']),
-  countMessages: def('stats:countMessages', () => ['stats:countMessages']),
-  countTopics: def('stats:countTopics', () => ['stats:countTopics']),
-  heatmaps: def('stats:heatmaps', (type: string) => ['stats:heatmaps', type]),
-  maxTaskDuration: def('stats:maxTaskDuration', () => ['stats:maxTaskDuration']),
-  messages: def('stats:messages', () => ['stats:messages']),
-  rankAgents: def('stats:rankAgents', () => ['stats:rankAgents']),
-  rankModels: def('stats:rankModels', () => ['stats:rankModels']),
-  rankTopics: def('stats:rankTopics', () => ['stats:rankTopics']),
-  sessions: def('stats:sessions', () => ['stats:sessions']),
-  topics: def('stats:topics', () => ['stats:topics']),
-  usageLogs: def('stats:usageLogs', () => ['stats:usageLogs']),
-  usageStat: def('stats:usageStat', () => ['stats:usageStat']),
-  welcome: def('stats:welcome', () => ['stats:welcome']),
-};
-
 // ---- messenger / platform integration -----------------------------------
 export const messengerKeys = {
-  agentsForBinding: def('messenger:agentsForBinding', (workspaceId: string | null | undefined) => [
-    'messenger:agentsForBinding',
-    workspaceId ?? null,
-  ]),
-  availablePlatforms: def('messenger:availablePlatforms', () => ['messenger:availablePlatforms']),
-  bindingScopes: def('messenger:bindingScopes', () => ['messenger:bindingScopes']),
-  listMyInstallations: def('messenger:listMyInstallations', () => [
-    'messenger:listMyInstallations',
-  ]),
-  listMyLinks: def('messenger:listMyLinks', () => ['messenger:listMyLinks']),
   myLink: def('messenger:myLink', (platform: string, tokenScopeKey: string | undefined) => [
     'messenger:myLink',
     platform,
     tokenScopeKey,
   ]),
   peek: def('messenger:peek', (randomId: string) => ['messenger:peek', randomId]),
-  pushWindow: def('messenger:pushWindow', (platform: string, tenantId?: string) => [
-    'messenger:pushWindow',
-    platform,
-    tenantId ?? null,
-  ]),
 };
 
 // ---- scm (GitHub App integration) --------------------------------------
 export const scmKeys = {
   changeRequests: def('scm:changeRequests', (workspaceId: string | null | undefined) => [
     'scm:changeRequests',
-    workspaceId ?? null,
-  ]),
-  config: def('scm:config', () => ['scm:config']),
-  identity: def('scm:identity', (provider: string) => ['scm:identity', provider]),
-  installations: def('scm:installations', (workspaceId: string | null | undefined) => [
-    'scm:installations',
     workspaceId ?? null,
   ]),
   repositories: def('scm:repositories', (workspaceId: string | null | undefined) => [
@@ -627,51 +526,16 @@ export const scmKeys = {
 };
 
 // ---- verify (deliverable judging) ---------------------------------------
-export const expertiseKeys = {
-  domain: def('expertise:domain', (domainId: string) => ['expertise:domain', domainId]),
-  historyCount: def('expertise:historyCount', (agentId: string) => [
-    'expertise:historyCount',
-    agentId,
-  ]),
-  lesson: def('expertise:lesson', (lessonId: string) => ['expertise:lesson', lessonId]),
-  overview: def('expertise:overview', (agentId: string) => ['expertise:overview', agentId]),
-  ruleRevisions: def('expertise:ruleRevisions', (lessonId: string) => [
-    'expertise:ruleRevisions',
-    lessonId,
-  ]),
-  ruleSources: def('expertise:ruleSources', (lessonId: string) => [
-    'expertise:ruleSources',
-    lessonId,
-  ]),
-  rules: def('expertise:rules', () => ['expertise:rules']),
-};
-
 export const verifyKeys = {
   acceptancePurgePreview: def('verify:acceptancePurgePreview', (acceptanceId: string) => [
     'verify:acceptancePurgePreview',
     acceptanceId,
   ]),
-  criteria: def('verify:criteria', () => ['verify:criteria']),
-  instruction: def('verify:instruction', (documentId: string) => [
-    'verify:instruction',
-    documentId,
-  ]),
-  reportBundle: def('verify:reportBundle', (verifyRunId: string) => [
-    'verify:reportBundle',
-    verifyRunId,
-  ]),
-  rubric: def('verify:rubric', (rubricId: string) => ['verify:rubric', rubricId]),
   /** The acceptance round an old `/verify/:runId` link redirects to. */
   runAcceptanceRound: def('verify:runAcceptanceRound', (verifyRunId: string) => [
     'verify:runAcceptanceRound',
     verifyRunId,
   ]),
-  rubricCriteria: def('verify:rubricCriteria', (rubricId: string) => [
-    'verify:rubricCriteria',
-    rubricId,
-  ]),
-  rubrics: def('verify:rubrics', () => ['verify:rubrics']),
-  tracing: def('verify:tracing', (tracingId: string) => ['verify:tracing', tracingId]),
 };
 
 // ---- inbox / notifications ----------------------------------------------
@@ -725,15 +589,8 @@ export const shareKeys = {
     documentId,
   ]),
   topic: def('share:topic', (id: string) => ['share:topic', id]),
-  topicInfo: def('share:topicInfo', (topicId: string) => ['share:topicInfo', topicId]),
   /** The visitor's own topics under an agent share (server-scoped by senderId). */
   visitorTopics: def('share:visitorTopics', (shareId: string) => ['share:visitorTopics', shareId]),
-};
-
-// ---- fork source (community detail) -------------------------------------
-export const forkKeys = {
-  groupSource: def('fork:groupSource', (identifier: string) => ['fork:groupSource', identifier]),
-  source: def('fork:source', (identifier: string) => ['fork:source', identifier]),
 };
 
 // ---- local file ---------------------------------------------------------
@@ -788,15 +645,6 @@ export const localFileKeys = {
   ]),
 };
 
-// ---- favorite status (marketplace detail headers) -----------------------
-export const favoriteKeys = {
-  status: def('favorite:status', (targetType: string, identifier: string) => [
-    'favorite:status',
-    targetType,
-    identifier,
-  ]),
-};
-
 // ---- changelog ----------------------------------------------------------
 export const canvasKeys = {
   storage: def('canvas:storage', () => ['canvas:storage']),
@@ -828,16 +676,9 @@ export const onboardingKeys = {
   understandingTopic: def('onboarding:understandingTopic', () => ['onboarding:understandingTopic']),
 };
 
-// ---- agent home / profile / signal (kept off the `agent:` idb tier) -----
+// ---- agent home / profile (kept off the `agent:` idb tier) -----
 export const agentHomeKeys = {
   topics: def('agentHome:topics', (agentId: string) => ['agentHome:topics', agentId]),
-};
-export const agentSignalKeys = {
-  receipts: def('agentSignal:receipts', (agentId: string, topicId: string) => [
-    'agentSignal:receipts',
-    agentId,
-    topicId,
-  ]),
 };
 
 // ---- bot wake records (one bot's judged messages; never persisted) ----
@@ -946,22 +787,15 @@ export const taskLabelKeys = {
 
 export const swrKeys = {
   agent: agentConfigKeys,
-  agentDocument: agentDocumentSWRKeys,
   agentHome: agentHomeKeys,
-  agentSignal: agentSignalKeys,
   auth: authKeys,
-  brief: briefKeys,
   canvas: canvasKeys,
   changelog: changelogKeys,
   cron: cronKeys,
   device: deviceKeys,
-  discover: discoverKeys,
   electron: electronKeys,
   eval: evalKeys,
-  expertise: expertiseKeys,
-  favorite: favoriteKeys,
   file: fileKeys,
-  fork: forkKeys,
   gateway: gatewayKeys,
   goal: goalKeys,
   global: globalKeys,
@@ -981,7 +815,6 @@ export const swrKeys = {
   resource: resourceKeys,
   serverConfig: serverConfigKeys,
   share: shareKeys,
-  stats: statsKeys,
   taskLabel: taskLabelKeys,
   thread: threadKeys,
   tool: toolKeys,
