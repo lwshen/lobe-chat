@@ -167,15 +167,15 @@
       "prettier --write --no-error-on-unmatched-pattern"
     ],
     "*.{mjs,cjs}": [
-      "oxlint --fix",
+      "oxlint --fix --no-error-on-unmatched-pattern",
       "prettier --write"
     ],
     "*.{js,jsx}": [
-      "oxlint --fix",
+      "oxlint --fix --no-error-on-unmatched-pattern",
       "prettier --write"
     ],
     "*.{ts,tsx}": [
-      "oxlint --fix",
+      "oxlint --fix --no-error-on-unmatched-pattern",
       "prettier --parser=typescript --write"
     ],
     "*.{css,less}": [
@@ -337,6 +337,7 @@
     "@lobehub/editor": "7.2.1",
     "@lobehub/icons": "^6.13.0",
     "@lobehub/market-sdk": "0.46.0",
+    "@lobehub/tts": "^6.1.0",
     "@lobehub/ui": "^6.13.1",
     "@modelcontextprotocol/client": "~2.4.0",
     "@modelcontextprotocol/ext-apps": "^2.0.3",
