@@ -29,13 +29,18 @@ import {
 } from './ConnectorRowFeedback';
 import { isSettledByConnection, useConnectorManageGate } from './connectorRowState';
 import { RowAddAction, RowMoreMenu } from './RowActions';
-import SkillListRow, { ConnectedStatus, useSkillListVariant } from './SkillListRow';
+import SkillListRow, {
+  type CatalogConnectRow,
+  ConnectedStatus,
+  useSkillListVariant,
+} from './SkillListRow';
 import { styles } from './style';
 
 const POLL_INTERVAL_MS = 1000;
 const POLL_TIMEOUT_MS = 15_000;
 
 interface ComposioSkillItemProps {
+  catalogRow?: CatalogConnectRow;
   hideConnectedStatus?: boolean;
   isSelected?: boolean;
   onDelete?: () => void;
@@ -45,7 +50,7 @@ interface ComposioSkillItemProps {
 }
 
 const ComposioSkillItem = memo<ComposioSkillItemProps>(
-  ({ hideConnectedStatus, serverType, server, isSelected, onSelect }) => {
+  ({ catalogRow, hideConnectedStatus, serverType, server, isSelected, onSelect }) => {
     const { t } = useTranslation('setting');
     const isPage = useSkillListVariant() === 'page';
     const { allowed: canCreate, reason: createReason } = usePermission('create_content');
@@ -405,11 +410,11 @@ const ComposioSkillItem = memo<ComposioSkillItemProps>(
           />
         );
       const needsAuth = isPending || isError;
+      const action = t(needsAuth ? 'tools.composio.reauthorize' : 'connectorMarket.action.connect');
       return (
         <RowAddAction
           disabled={!canCreate || !canEdit || !canManage}
           icon={needsAuth ? RotateCcw : undefined}
-          label={t(needsAuth ? 'tools.composio.reauthorize' : 'connectorMarket.action.connect')}
           loading={isConnecting || isWaitingAuth}
           disabledReason={
             isRestricted
@@ -417,6 +422,11 @@ const ComposioSkillItem = memo<ComposioSkillItemProps>(
               : !canCreate
                 ? createReason
                 : editReason
+          }
+          label={
+            catalogRow
+              ? t('catalog.rowAction', { ns: 'discover', action, name: catalogRow.title })
+              : action
           }
           onClick={needsAuth ? handleReauthorize : handleConnect}
         />
@@ -465,6 +475,9 @@ const ComposioSkillItem = memo<ComposioSkillItemProps>(
       );
     };
 
+    if (catalogRow)
+      return <SkillListRow {...catalogRow} description={description} extra={renderPageExtra()} />;
+
     if (onSelect) {
       const renderNavIcon = () => {
         const { icon, label } = serverType;
@@ -493,41 +506,36 @@ const ComposioSkillItem = memo<ComposioSkillItemProps>(
     }
 
     return (
-      <Flexbox
-        horizontal
-        align="center"
-        className={stylex.props(styles.container).className}
-        gap={8}
-        justify="space-between"
-        style={{
-          ...(isSelected ? { background: 'var(--lobe-color-primary-bg)', borderRadius: 6 } : {}),
-          ...(onSelect ? { cursor: 'pointer' } : {}),
-        }}
-        onClick={onSelect}
-      >
-        <Flexbox horizontal align="center" gap={8} style={{ flex: 1, overflow: 'hidden' }}>
-          <Flexbox
-            horizontal
-            align="center"
-            gap={8}
-            style={{ cursor: onSelect ? undefined : 'pointer' }}
-          >
-            <div {...stylex.props(styles.icon, !isConnected && styles.disconnectedIcon)}>
-              {renderIcon()}
-            </div>
-            <span {...stylex.props(styles.title, !isConnected && styles.disconnectedTitle)}>
-              {serverType.label}
-            </span>
+      <>
+        <Flexbox
+          horizontal
+          align="center"
+          className={stylex.props(styles.container).className}
+          gap={8}
+          justify="space-between"
+          style={
+            isSelected ? { background: 'var(--lobe-color-primary-bg)', borderRadius: 6 } : undefined
+          }
+        >
+          <Flexbox horizontal align="center" gap={8} style={{ flex: 1, overflow: 'hidden' }}>
+            <Flexbox horizontal align="center" gap={8}>
+              <div {...stylex.props(styles.icon, !isConnected && styles.disconnectedIcon)}>
+                {renderIcon()}
+              </div>
+              <span {...stylex.props(styles.title, !isConnected && styles.disconnectedTitle)}>
+                {serverType.label}
+              </span>
+            </Flexbox>
+            {!isConnected && renderStatus()}
           </Flexbox>
-          {!isConnected && renderStatus()}
-        </Flexbox>
-        {!onSelect && (
           <Flexbox horizontal align="center" gap={8}>
             {isConnected && renderStatus()}
             {renderAction()}
           </Flexbox>
-        )}
-      </Flexbox>
+        </Flexbox>
+        {actionError &&
+          renderConnectorRowDescription({ error: actionError, name: serverType.label })}
+      </>
     );
   },
 );

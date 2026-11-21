@@ -28,23 +28,47 @@ import { toConnectorActionError } from '@/utils/connectorActionError';
 import { renderConnectorRowDescription } from './ConnectorRowFeedback';
 import { isSettledByConnection } from './connectorRowState';
 import { RowAddAction, RowMoreMenu } from './RowActions';
-import SkillListRow, { ConnectedStatus, useSkillListVariant } from './SkillListRow';
+import SkillListRow, {
+  type CatalogConnectRow,
+  ConnectedStatus,
+  useSkillListVariant,
+} from './SkillListRow';
 import { styles } from './style';
 
 const POLL_INTERVAL_MS = 1000;
 const POLL_TIMEOUT_MS = 15_000;
 
 interface LobehubSkillItemProps {
+  catalogRow?: CatalogConnectRow;
+  /** False where LobeHub connectors are off: the row only opens its page. Defaults to true. */
+  connectable?: boolean;
   hideConnectedStatus?: boolean;
   isSelected?: boolean;
   onDelete?: () => void;
   onSelect?: () => void;
+  /** The row opens `onSelect` before connecting too: it leads to a page, not an empty detail. */
+  openWhenDisconnected?: boolean;
   provider: LobehubSkillProviderType;
   server?: LobehubSkillServer;
+  showConnectLabel?: boolean;
+  /** Replaces the provider's generic description on the row. */
+  summary?: string;
 }
 
 const LobehubSkillItem = memo<LobehubSkillItemProps>(
-  ({ hideConnectedStatus, provider, server, isSelected, onSelect, onDelete }) => {
+  ({
+    catalogRow,
+    connectable = true,
+    hideConnectedStatus,
+    provider,
+    server,
+    isSelected,
+    onSelect,
+    onDelete,
+    openWhenDisconnected,
+    showConnectLabel,
+    summary,
+  }) => {
     const { t } = useTranslation('setting');
     const isPage = useSkillListVariant() === 'page';
     const { allowed: canCreate, reason: createReason } = usePermission('create_content');
@@ -322,6 +346,7 @@ const LobehubSkillItem = memo<LobehubSkillItemProps>(
     // button that opens the OAuth flow inline, so users can tell what is connected
     // and aren't left staring at a blank detail panel wondering if it's a bug.
     const renderPageExtra = () => {
+      if (!isConnected && !connectable) return null;
       const needsAuth = server?.status === LobehubSkillStatus.ERROR;
       if (isConnected)
         return (
@@ -339,13 +364,19 @@ const LobehubSkillItem = memo<LobehubSkillItemProps>(
             onOpenDetail={onSelect}
           />
         );
+      const action = t(needsAuth ? 'tools.composio.reauthorize' : 'connectorMarket.action.connect');
       return (
         <RowAddAction
           disabled={!canCreate || !canEdit}
           disabledReason={!canCreate ? createReason : editReason}
           icon={needsAuth ? RotateCcw : undefined}
-          label={t(needsAuth ? 'tools.composio.reauthorize' : 'connectorMarket.action.connect')}
           loading={isConnecting || isWaitingAuth}
+          showLabel={showConnectLabel}
+          label={
+            catalogRow
+              ? t('catalog.rowAction', { ns: 'discover', action, name: catalogRow.title })
+              : action
+          }
           onClick={handleConnect}
         />
       );
@@ -353,6 +384,7 @@ const LobehubSkillItem = memo<LobehubSkillItemProps>(
 
     const renderNavExtra = () => {
       if (isPage) return renderPageExtra();
+      if (!isConnected && !connectable) return null;
       if (isConnecting || isWaitingAuth) {
         return <Button disabled loading size="small" type="text" />;
       }
@@ -379,6 +411,9 @@ const LobehubSkillItem = memo<LobehubSkillItemProps>(
       );
     };
 
+    if (catalogRow)
+      return <SkillListRow {...catalogRow} description={description} extra={renderPageExtra()} />;
+
     if (onSelect) {
       const renderNavIcon = () => {
         const { icon, label } = provider;
@@ -397,55 +432,54 @@ const LobehubSkillItem = memo<LobehubSkillItemProps>(
           // Only connected connectors open the detail panel. When disconnected,
           // the row is inert and the only affordance is the inline Connect button —
           // otherwise clicking opens a blank detail panel that reads as a bug.
-          summary={t(`tools.lobehubSkill.providers.${provider.id}.description`, {
-            defaultValue: provider.description,
-          })}
-          onClick={isConnected ? onSelect : undefined}
+          // `openWhenDisconnected` is for a connector whose detail has content anyway.
+          summary={
+            summary ??
+            t(`tools.lobehubSkill.providers.${provider.id}.description`, {
+              defaultValue: provider.description,
+            })
+          }
+          onClick={isConnected || openWhenDisconnected ? onSelect : undefined}
         />
       );
     }
 
     return (
-      <Flexbox
-        horizontal
-        align="center"
-        className={stylex.props(styles.container).className}
-        gap={8}
-        justify="space-between"
-        style={{
-          ...(isSelected ? { background: 'var(--lobe-color-primary-bg)', borderRadius: 6 } : {}),
-          ...(onSelect ? { cursor: 'pointer' } : {}),
-        }}
-        onClick={onSelect}
-      >
-        <Flexbox horizontal align="center" gap={8} style={{ flex: 1, overflow: 'hidden' }}>
-          <Flexbox
-            horizontal
-            align="center"
-            gap={8}
-            style={{ cursor: onSelect ? undefined : 'pointer' }}
-            onClick={
-              onSelect
-                ? undefined
-                : () => createLobehubSkillDetailModal({ identifier: provider.id })
-            }
-          >
-            <div {...stylex.props(styles.icon, !isConnected && styles.disconnectedIcon)}>
-              {renderIcon()}
-            </div>
-            <span {...stylex.props(styles.title, !isConnected && styles.disconnectedTitle)}>
-              {provider.label}
-            </span>
+      <>
+        <Flexbox
+          horizontal
+          align="center"
+          className={stylex.props(styles.container).className}
+          gap={8}
+          justify="space-between"
+          style={
+            isSelected ? { background: 'var(--lobe-color-primary-bg)', borderRadius: 6 } : undefined
+          }
+        >
+          <Flexbox horizontal align="center" gap={8} style={{ flex: 1, overflow: 'hidden' }}>
+            <Flexbox
+              horizontal
+              align="center"
+              gap={8}
+              style={{ cursor: 'pointer' }}
+              onClick={() => createLobehubSkillDetailModal({ identifier: provider.id })}
+            >
+              <div {...stylex.props(styles.icon, !isConnected && styles.disconnectedIcon)}>
+                {renderIcon()}
+              </div>
+              <span {...stylex.props(styles.title, !isConnected && styles.disconnectedTitle)}>
+                {provider.label}
+              </span>
+            </Flexbox>
+            {!isConnected && renderStatus()}
           </Flexbox>
-          {!isConnected && renderStatus()}
-        </Flexbox>
-        {!onSelect && (
           <Flexbox horizontal align="center" gap={8}>
             {isConnected && renderStatus()}
             {renderAction()}
           </Flexbox>
-        )}
-      </Flexbox>
+        </Flexbox>
+        {actionError && renderConnectorRowDescription({ error: actionError, name: provider.label })}
+      </>
     );
   },
 );
