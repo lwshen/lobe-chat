@@ -51,6 +51,15 @@ describe('settings search index', () => {
     }
   });
 
+  it('offers Codex App Server in web settings search for connected-device runs', () => {
+    const item = SETTINGS_SEARCH_ITEMS.find(
+      (entry) => entry.anchor === 'labs-enableCodexAppServer',
+    );
+
+    expect(item).toBeDefined();
+    expect(item!.visible?.(webContext) ?? true).toBe(true);
+  });
+
   it('shows workspace lab features exactly where business features are enabled', () => {
     const labsItems = SETTINGS_SEARCH_ITEMS.filter((item) => item.tab === SettingsTabs.Labs);
     const workspaceItems = LAB_FEATURES.filter((feature) => feature.workspaceOnly).map(({ flag }) =>
@@ -95,5 +104,17 @@ describe('settings search index', () => {
     expect(TAB_SEARCH_EN_KEYWORDS[SettingsTabs.Storage]).toEqual(
       expect.arrayContaining(['knowledge base']),
     );
+  });
+});
+
+describe('settings search after the Marketplace migration', () => {
+  // Skills and connectors moved to the Marketplace; searching settings for them
+  // must not offer a result that opens a settings tab that no longer exists.
+  it('indexes no skill or connector tab', () => {
+    for (const tab of [SettingsTabs.Skill, SettingsTabs.Connector]) {
+      expect(TAB_SEARCH_EN_KEYWORDS[tab]).toBeUndefined();
+      expect(TAB_SEARCH_KEYWORDS_KEYS[tab]).toBeUndefined();
+      expect(SETTINGS_SEARCH_ITEMS.some((item) => item.tab === tab)).toBe(false);
+    }
   });
 });

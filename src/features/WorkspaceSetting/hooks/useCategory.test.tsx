@@ -43,6 +43,14 @@ const wrapper = ({ children }: { children: ReactNode }) => (
   <Provider createStore={() => initServerConfigStore({})}>{children}</Provider>
 );
 
+const wrapperWithMcpEvents = ({ children }: { children: ReactNode }) => (
+  <Provider
+    createStore={() => initServerConfigStore({ featureFlags: { enableWebhook: true } as never })}
+  >
+    {children}
+  </Provider>
+);
+
 const initialUserStoreState = useUserStore.getState();
 
 const getItemKeys = () => {
@@ -103,9 +111,7 @@ describe('workspace settings useCategory', () => {
     expect(result.current.at(-1)?.key).toBe(WorkspaceSettingsGroupKey.System);
   });
 
-  // The drives need no opt-in: every member sees the tab, which shows the
-  // public drive, their own, and the way to a plan when the workspace has none.
-  it('groups devices, subscription accounts, environments and drives under Resources', () => {
+  it('groups devices, subscription accounts and environments & credentials under Runtime', () => {
     const { result } = renderHook(() => useWorkspaceSettingCategory(), { wrapper });
     const keys = result.current.map((group) => group.key);
     const resourceGroup = result.current.find(
@@ -124,6 +130,7 @@ describe('workspace settings useCategory', () => {
     expect(resourceGroup?.items.map((item) => item.key)).toEqual([
       WorkspaceSettingsTabs.Devices,
       WorkspaceSettingsTabs.SubscriptionAccounts,
+      // Credentials share the Environments page rather than an entry of their own.
       WorkspaceSettingsTabs.Environments,
     ]);
     expect(generalGroup?.items.map((item) => item.key)).not.toContain(
@@ -155,6 +162,9 @@ describe('workspace settings useCategory', () => {
 
     expect(connectionGroup?.items.map((item) => item.key)).toContain(
       WorkspaceSettingsTabs.Integrations,
+    );
+    expect(connectionGroup?.items.map((item) => item.key)).not.toContain(
+      WorkspaceSettingsTabs.Creds,
     );
   });
 
@@ -253,5 +263,36 @@ describe('workspace settings useCategory', () => {
     expect(itemKeys).not.toContain(WorkspaceSettingsTabs.Billing);
     expect(itemKeys).toContain(WorkspaceSettingsTabs.Plans);
     expect(itemKeys).toContain(WorkspaceSettingsTabs.Usage);
+  });
+});
+
+describe('workspace settings useCategory automations', () => {
+  const connectionKeys = (withFlag: boolean) => {
+    const { result } = renderHook(() => useWorkspaceSettingCategory(), {
+      wrapper: withFlag ? wrapperWithMcpEvents : wrapper,
+    });
+
+    return result.current
+      .find((group) => group.key === WorkspaceSettingsGroupKey.Connection)
+      ?.items.map((item) => item.key);
+  };
+
+  // Unreleased: the tab follows the `webhook` flag (LOBE-UX-015).
+  it('hides Automations while MCP Events is off', () => {
+    expect(connectionKeys(false)).not.toContain(WorkspaceSettingsTabs.Automations);
+  });
+
+  // Every role sees it: the list is how members learn what fires shared agents.
+  it('lists Automations after Integrations for every role', () => {
+    mocks.canCreateContent = false;
+    mocks.canManageWorkspace = false;
+    mocks.canViewBilling = false;
+    const keys = connectionKeys(true) ?? [];
+
+    // Connectors moved to the Marketplace (`/:slug/marketplace/connector`).
+    expect(keys).not.toContain(WorkspaceSettingsTabs.Connector);
+    expect(keys.indexOf(WorkspaceSettingsTabs.Automations)).toBe(
+      keys.indexOf(WorkspaceSettingsTabs.Integrations) + 1,
+    );
   });
 });

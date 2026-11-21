@@ -29,17 +29,18 @@ vi.mock('@/store/tool', () => ({ getToolStoreState: () => toolStore }));
 
 vi.mock('@/store/tool/selectors', () => ({
   pluginSelectors: {
+    isInstalledPluginsServerConfirmed: () => true,
     getCustomPluginById: () => () => undefined,
     getInstalledPluginById: (id: string) => () => plugins.get(id),
   },
 }));
 
-vi.mock('@/store/tool/slices/connector', () => ({
-  connectorSelectors: {
-    connectorByIdentifierForAgent: (id: string, agentId?: string) => () =>
-      (agentId && toolStore.loaded.has(agentId) ? agentTools.get(agentId)?.get(id) : undefined) ??
-      connectors.get(id),
-  },
+// The row the conversation's call runs on; `toolCallPolicy.connectorScope.test.ts`
+// covers how it is resolved
+vi.mock('@/services/connectorRun', () => ({
+  resolveRunConnector: async (id: string, { agentId }: { agentId?: string } = {}) =>
+    (agentId && toolStore.loaded.has(agentId) ? agentTools.get(agentId)?.get(id) : undefined) ??
+    connectors.get(id),
 }));
 
 vi.mock('@/store/user', () => ({ getUserStoreState: () => ({}) }));
@@ -419,5 +420,17 @@ describe('getAppToolCallPolicy', () => {
     expect(await getAppToolCallPolicy('shell', 'run', { toolArgs: { command: 'ls' } })).toBe(
       'allow',
     );
+  });
+});
+
+describe('manual entrypoint policy', () => {
+  it('ignores visibility and treats the click as approval, while preserving disabled tools', async () => {
+    connectors.set('entry', {
+      ...connector('needs_approval'),
+      tools: [{ toolName: 'send', permission: 'needs_approval', metadata: { visibility: [] } }],
+    });
+    expect(await getAppToolCallPolicy('entry', 'send', { fromEntrypoint: true })).toBe('allow');
+    connectors.set('entry', connector('disabled'));
+    expect(await getAppToolCallPolicy('entry', 'send', { fromEntrypoint: true })).toBe('deny');
   });
 });

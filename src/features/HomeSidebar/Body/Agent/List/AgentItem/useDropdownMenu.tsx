@@ -31,6 +31,7 @@ import { useActiveWorkspaceId } from '@/business/client/hooks/useActiveWorkspace
 import { useAgentTransferMenuItem } from '@/business/client/hooks/useAgentTransferMenuItem';
 import { useAgentTransferToMemberMenuItem } from '@/business/client/hooks/useAgentTransferToMemberMenuItem';
 import { openRenameModal } from '@/components/RenameModal';
+import { confirmRemoveAgent } from '@/features/AgentDeleteConfirm';
 import { useOptionalAgentModal } from '@/features/HomeSidebar/Body/Agent/ModalProvider';
 import { useResourceAccess } from '@/features/ResourcePermission/useResourceAccess';
 import VisibilityConfirmContent from '@/features/VisibilityConfirmContent';
@@ -70,12 +71,6 @@ interface UseAgentDropdownMenuParams {
   name?: string | null;
   openCreateGroupModal: () => void;
   pinned: boolean;
-  /**
-   * Offer "Remove from sidebar". Off for lists that ignore the sidebar
-   * visibility preference (the `im_layout` Messages list), where it would
-   * change nothing visible. Defaults to on.
-   */
-  sidebarVisibilityEnabled?: boolean;
   slug?: string | null;
   title: string;
   userId?: string | null;
@@ -92,7 +87,6 @@ export const useAgentDropdownMenu = ({
   name,
   openCreateGroupModal,
   pinned,
-  sidebarVisibilityEnabled = true,
   slug,
   title,
   userId,
@@ -151,8 +145,7 @@ export const useAgentDropdownMenu = ({
   const currentUserId = useUserStore(userProfileSelectors.userId);
   const { isSidebarItemVisible, setSidebarItemVisible } = useSidebarItemVisibility();
   const refreshWorkspaceUserPreference = useUserStore((s) => s.refreshWorkspaceUserPreference);
-  const isShownInSidebar =
-    sidebarVisibilityEnabled && isSidebarItemVisible({ id, slug, type: 'agent', userId });
+  const isShownInSidebar = isSidebarItemVisible({ id, slug, type: 'agent', userId });
   const isPrivate = visibility === 'private';
   const isBuiltin = !!slug && BUILTIN_SLUGS.has(slug);
   const showPublishAction = Boolean(activeWorkspaceId) && isPrivate;
@@ -179,6 +172,10 @@ export const useAgentDropdownMenu = ({
   // Row-level ownership: delete/transfer/visibility management stays scoped
   // to the creator or a workspace owner, separate from collaborative editing.
   const canManage = useResourceManageable(userId);
+  // Delete also opens to a workspace Admin on another member's shared agent
+  // (server `canManage`); the confirmation then warns that someone else created
+  // it, and the server only accepts the delete with that acknowledgment.
+  const canDelete = canManage || canManageResource;
 
   // Cross-workspace Transfer to… / Copy to… items (null when workspace
   // feature is off or the viewer lacks permission for this agent)
@@ -583,7 +580,7 @@ export const useAgentDropdownMenu = ({
                     },
                   ]
                 : []),
-              ...(canManage
+              ...(canDelete
                 ? [
                     { type: 'divider' as const },
                     {
@@ -593,20 +590,16 @@ export const useAgentDropdownMenu = ({
                       label: t('delete', { ns: 'common' }),
                       onClick: ({ domEvent }: any) => {
                         domEvent.stopPropagation();
-                        confirmModal({
-                          cancelText: t('cancel', { ns: 'common' }),
-                          content: t('confirmRemoveSessionItemAlert'),
-                          okButtonProps: { danger: true },
-                          okText: t('delete', { ns: 'common' }),
-                          onOk: async () => {
+                        confirmRemoveAgent({
+                          agentId: id,
+                          onConfirm: async (options) => {
                             try {
-                              await removeAgent(id);
+                              await removeAgent(id, options);
                               toast.success(t('confirmRemoveSessionSuccess'));
                             } catch (error) {
                               toast.error(t(getDeleteErrorMessageKey(error), { ns: 'common' }));
                             }
                           },
-                          title: t('delete', { ns: 'common' }),
                         });
                       },
                       sfSymbol: 'trash',
@@ -623,8 +616,8 @@ export const useAgentDropdownMenu = ({
       canCreate,
       canConfigure,
       canEdit,
-      canManage,
       canManageResource,
+      canDelete,
       navigate,
       pinned,
       id,

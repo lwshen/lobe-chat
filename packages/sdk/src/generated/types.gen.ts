@@ -5,81 +5,267 @@ export type ClientOptions = {
 };
 
 export type ApiError = {
+    code: ApiErrorCode;
+    details?: Array<{
+        message: string;
+        path: string;
+    }>;
+    /**
+     * Deprecated alias of `message`, kept for clients written before `code`.
+     */
     error: string;
+    message: string;
+    /**
+     * Same value as the `X-Request-Id` response header; quote it when reporting an issue.
+     */
+    requestId: string;
     success: false;
     timestamp: string;
 };
 
-export type AgentAccount = {
-    accessedAt: string;
-    agentId: string;
-    capabilities: {
-        login?: boolean | null;
-        receive: boolean;
-        send: boolean;
-        sign?: boolean | null;
-    };
-    createdAt: string;
-    credentialHint?: {
-        [key: string]: unknown;
-    } | null;
-    displayName?: string | null;
-    hasCredential: boolean;
-    id: string;
-    identifier: string;
-    kind: 'mail' | 'wallet' | 'service' | 'phone';
-    metadata?: {
-        [key: string]: unknown;
-    } | null;
-    provider: string;
-    revokedAt?: string | null;
-    status: 'provisioning' | 'active' | 'suspended' | 'revoked';
-    updatedAt: string;
-    userId?: string;
-    workspaceId?: string | null;
-};
-
-export type ApiKey = {
-    createdAt: string;
-    enabled?: boolean | null;
-    expiresAt?: string | null;
-    id: string;
-    lastUsedAt?: string | null;
-    name: string;
-    scopes?: Array<'*' | 'agent:read' | 'agent:write' | 'agent:credential:write' | 'eval:read' | 'eval:write' | 'chat:read' | 'chat:write' | 'model:invoke' | 'model:read' | 'model:write' | 'file:read' | 'file:write' | 'knowledge:read' | 'knowledge:write' | 'mcp:read' | 'mcp:write' | 'usage:read' | 'workspace:read' | 'workspace:write' | 'user:read' | 'user:write'> | null;
-    updatedAt: string;
-};
-
-export type Agent = {
-    avatar?: string | null;
-    chatConfig?: {
-        [key: string]: unknown;
-    } | null;
-    createdAt: string;
-    description?: string | null;
-    id: string;
-    model?: string | null;
-    params?: {
-        [key: string]: unknown;
-    } | null;
-    personal?: boolean;
-    plugins?: Array<{
-        identifier: string;
-        mode: 'pinned' | 'auto' | 'disabled';
-    }>;
-    provider?: string | null;
-    slug?: string | null;
-    systemRole?: string | null;
-    title?: string | null;
-    updatedAt: string;
-};
+/**
+ * Stable machine-readable error code. Codes are only ever added.
+ *
+ * - `bad_request`: The request was understood but cannot be processed as sent.
+ * - `conflict`: The request conflicts with the current state of the resource.
+ * - `forbidden`: The caller is authenticated but may not perform this operation.
+ * - `idempotency_conflict`: The `Idempotency-Key` is still being processed, or was first used with a different request.
+ * - `insufficient_scope`: The API key lacks a capability scope this operation requires.
+ * - `internal_error`: An unexpected server error. Safe to retry with backoff.
+ * - `not_found`: The resource does not exist or is not visible to the caller.
+ * - `payload_too_large`: The request body exceeds the size this operation accepts.
+ * - `payment_required`: The operation needs credits or a plan the caller lacks.
+ * - `precondition_failed`: A precondition of the operation is not met.
+ * - `rate_limited`: Too many requests for this API key. Retry after the `Retry-After` header (seconds).
+ * - `service_unavailable`: A dependency is temporarily unavailable.
+ * - `unauthorized`: Authentication is missing, invalid or expired.
+ * - `unprocessable_entity`: The request is valid but cannot be applied to the resource.
+ * - `upstream_error`: An upstream provider failed while serving the request.
+ * - `validation_error`: The request failed schema validation; `details` lists each failing field.
+ * - `workspace_mismatch`: The `X-Workspace-Id` header does not match the API key, or the caller is not a member of that workspace.
+ */
+export type ApiErrorCode = 'bad_request' | 'conflict' | 'forbidden' | 'idempotency_conflict' | 'insufficient_scope' | 'internal_error' | 'not_found' | 'payload_too_large' | 'payment_required' | 'precondition_failed' | 'rate_limited' | 'service_unavailable' | 'unauthorized' | 'unprocessable_entity' | 'upstream_error' | 'validation_error' | 'workspace_mismatch';
 
 export type AgentGroup = {
     createdAt: string;
     id: string;
     name: string;
-    sort?: number | null;
+    sort: number | null;
     updatedAt: string;
+};
+
+/**
+ * Whether another page follows this one.
+ */
+export type PageHasMore = boolean;
+
+/**
+ * Pass as `cursor` to fetch the next page; `null` on the last page.
+ */
+export type PageNextCursor = string | null;
+
+/**
+ * Number of items across all pages.
+ */
+export type PageTotal = number;
+
+export type CreatedAgentGroup = {
+    id: string;
+};
+
+export type DeletedResource = {
+    deleted: true;
+    id: string;
+};
+
+export type AgentList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    agents: Array<Agent>;
+    total: PageTotal;
+};
+
+export type Agent = {
+    agencyConfig: {
+        [key: string]: unknown;
+    } | null;
+    avatar: string | null;
+    chatConfig: {
+        [key: string]: unknown;
+    } | null;
+    createdAt: string;
+    description: string | null;
+    id: string;
+    model: string | null;
+    params: {
+        [key: string]: unknown;
+    } | null;
+    personal: boolean;
+    plugins: Array<AgentPlugin>;
+    provider: string | null;
+    slug: string | null;
+    systemRole: string | null;
+    title: string | null;
+    updatedAt: string;
+};
+
+export type AgentPlugin = {
+    identifier: string;
+    mode: 'pinned' | 'auto' | 'disabled';
+};
+
+export type AgentDetail = {
+    agencyConfig: {
+        [key: string]: unknown;
+    } | null;
+    avatar: string | null;
+    chatConfig: {
+        [key: string]: unknown;
+    } | null;
+    createdAt: string;
+    description: string | null;
+    id: string;
+    model: string | null;
+    params: {
+        [key: string]: unknown;
+    } | null;
+    personal: boolean;
+    plugins: Array<AgentPlugin>;
+    provider: string | null;
+    slug: string | null;
+    systemRole: string | null;
+    title: string | null;
+    updatedAt: string;
+    files: Array<AgentFile>;
+    knowledgeBases: Array<AgentKnowledgeBase>;
+};
+
+export type AgentFile = {
+    createdAt: string;
+    enabled: boolean | null;
+    fileType: string;
+    id: string;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    name: string;
+    parentId: string | null;
+    size: number;
+    source: string | null;
+    updatedAt: string;
+    url: string;
+    visibility: 'private' | 'public';
+};
+
+export type AgentKnowledgeBase = {
+    avatar: string | null;
+    createdAt: string;
+    description: string | null;
+    enabled: boolean | null;
+    id: string;
+    isPublic: boolean | null;
+    name: string;
+    settings: {
+        [key: string]: unknown;
+    } | null;
+    type: string | null;
+    updatedAt: string;
+    visibility: 'private' | 'public';
+};
+
+export type AgentAccountList = {
+    accounts: Array<AgentAccount>;
+    total: number;
+};
+
+export type AgentAccount = {
+    accessedAt: string;
+    agentId: string;
+    capabilities: AgentAccountCapabilities;
+    createdAt: string;
+    credentialHint: {
+        expiresAt?: string;
+        masked?: string;
+        rotatedAt?: string;
+        username?: string;
+    } | null;
+    displayName: string | null;
+    hasCredential: boolean;
+    id: string;
+    identifier: string;
+    kind: 'mail' | 'wallet' | 'service' | 'phone';
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    provider: string;
+    revokedAt: string | null;
+    settings: {
+        wake?: {
+            digestMinutes?: number;
+            mode?: 'on' | 'off';
+            wakeSenders?: Array<string>;
+        };
+    };
+    status: 'provisioning' | 'active' | 'suspended' | 'revoked';
+    updatedAt: string;
+    userId: string;
+    workspaceId: string | null;
+};
+
+export type AgentAccountCapabilities = {
+    login?: boolean;
+    receive: boolean;
+    send: boolean;
+    sign?: boolean;
+};
+
+export type ApiKey = {
+    createdAt: string;
+    enabled: boolean | null;
+    expiresAt: string | null;
+    id: string;
+    lastUsedAt: string | null;
+    name: string;
+    scopes: Array<'*' | 'agent:read' | 'agent:write' | 'agent:credential:write' | 'eval:read' | 'eval:write' | 'chat:read' | 'chat:write' | 'model:invoke' | 'model:read' | 'model:write' | 'file:read' | 'file:write' | 'knowledge:read' | 'knowledge:write' | 'mcp:read' | 'mcp:write' | 'usage:read' | 'workspace:read' | 'workspace:write' | 'user:read' | 'user:write'> | null;
+    updatedAt: string;
+};
+
+export type CreatedApiKey = {
+    createdAt: string;
+    enabled: boolean | null;
+    expiresAt: string | null;
+    id: string;
+    lastUsedAt: string | null;
+    name: string;
+    scopes: Array<'*' | 'agent:read' | 'agent:write' | 'agent:credential:write' | 'eval:read' | 'eval:write' | 'chat:read' | 'chat:write' | 'model:invoke' | 'model:read' | 'model:write' | 'file:read' | 'file:write' | 'knowledge:read' | 'knowledge:write' | 'mcp:read' | 'mcp:write' | 'usage:read' | 'workspace:read' | 'workspace:write' | 'user:read' | 'user:write'> | null;
+    updatedAt: string;
+    key: string;
+};
+
+export type ChatResponse = {
+    content: string;
+    model: string;
+    provider: string;
+    usage?: {
+        completion_tokens?: number;
+        prompt_tokens?: number;
+        total_tokens?: number;
+    };
+};
+
+export type ChatTranslateResponse = {
+    translatedText: string;
+};
+
+export type ChatGenerateReplyResponse = {
+    reply: string;
+};
+
+export type ChatGroupList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    chatGroups: Array<ChatGroup>;
+    total: PageTotal;
 };
 
 export type ChatGroup = {
@@ -88,126 +274,1044 @@ export type ChatGroup = {
     createdAt: string;
     description: string | null;
     id: string;
-    members: Array<{
-        agentId: string;
-        enabled: boolean | null;
-        order: number | null;
-        role: 'supervisor' | 'participant' | 'assistant' | null;
-    }>;
+    members: Array<ChatGroupMember>;
     personal: boolean;
     pinned: boolean | null;
     title: string | null;
     updatedAt: string;
 };
 
-export type ChatResponse = {
-    content: string;
-    model?: string | null;
-    provider?: string | null;
-    usage?: {
-        completion_tokens?: number | null;
-        prompt_tokens?: number | null;
-        total_tokens?: number | null;
-    } | null;
+export type ChatGroupMember = {
+    agentId: string;
+    enabled: boolean | null;
+    order: number | null;
+    role: 'supervisor' | 'participant' | 'assistant' | null;
+};
+
+export type DocumentSummary = {
+    createdAt: string;
+    fileType: string;
+    id: string;
+    parentId: string | null;
+    slug: string | null;
+    title: string | null;
+    updatedAt: string;
+};
+
+export type Document = {
+    createdAt: string;
+    fileType: string;
+    id: string;
+    parentId: string | null;
+    slug: string | null;
+    title: string | null;
+    updatedAt: string;
+    /**
+     * Markdown body.
+     */
+    content: string | null;
 };
 
 export type EvalRun = {
+    config: {
+        caseSelection?: {
+            caseIds?: Array<string>;
+            mode: 'all' | 'include' | 'exclude';
+        };
+        k: number;
+        maxConcurrency?: number;
+        maxSteps?: number;
+        timeout?: number;
+    };
     createdAt: string;
     datasetId: string;
+    executionMode: 'internal' | 'external';
+    experimentId: string | null;
     id: string;
-    metrics?: {
-        [key: string]: unknown;
-    } | null;
-    name?: string | null;
-    startedAt?: string | null;
+    metrics: EvalRunMetrics | null;
+    name: string | null;
+    parentRunId: string | null;
+    startedAt: string | null;
     status: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'aborted' | 'external';
-    targetAgentId?: string | null;
+    targetAgentId: string | null;
     updatedAt: string;
+};
+
+export type EvalRunMetrics = {
+    averageScore?: number;
+    completedCases?: number;
+    cost?: number;
+    duration?: number;
+    errorCases?: number;
+    externalCases?: number;
+    failedCases?: number;
+    judgeErrorCases?: number;
+    llmCalls?: number;
+    passAllAt?: {
+        [key: string]: number;
+    };
+    passAllK?: number;
+    passAnyAt?: {
+        [key: string]: number;
+    };
+    passAtK?: number;
+    passedCases?: number;
+    passRate?: number;
+    perCaseCost?: number;
+    perCaseLlmCalls?: number;
+    perCaseSteps?: number;
+    perCaseTokens?: number;
+    perCaseToolCalls?: number;
+    rubricScores?: {
+        [key: string]: number;
+    };
+    steps?: number;
+    timeoutCases?: number;
+    tokens?: number;
+    toolCalls?: number;
+    totalCases?: number;
+    totalCost?: number;
+    totalDuration?: number;
+    totalTokens?: number;
+};
+
+export type EvalRunTopic = {
+    createdAt: string;
+    evalResult: EvalStoredResult | null;
+    input: string;
+    passed: boolean | null;
+    runId: string;
+    score: number | null;
+    status: 'pending' | 'running' | 'passed' | 'failed' | 'error' | 'timeout' | 'external' | 'completed' | 'judge_error' | null;
+    testCaseId: string;
+    topicId: string;
+};
+
+export type EvalStoredResult = {
+    awaitingExternalEval?: boolean;
+    completionReason?: string;
+    cost?: number;
+    duration?: number;
+    error?: string;
+    externalResult?: {
+        [key: string]: unknown;
+    };
+    externalThreadResults?: {
+        [key: string]: unknown;
+    };
+    extractedAnswer?: string;
+    llmCalls?: number;
+    passAllK?: boolean;
+    passAtK?: boolean;
+    rubricScores?: Array<EvalRubricScore>;
+    steps?: number;
+    threads?: Array<{
+        completionReason?: string;
+        cost?: number;
+        duration?: number;
+        error?: string;
+        llmCalls?: number;
+        passed?: boolean;
+        rubricScores?: Array<EvalRubricScore>;
+        score?: number;
+        status?: 'error' | 'external' | 'failed' | 'passed' | 'running' | 'timeout' | 'completed' | 'judge_error';
+        steps?: number;
+        threadId: string;
+        tokens?: number;
+        toolCalls?: number;
+        errorPhase?: 'judge';
+        executionId?: string;
+        judgeError?: string;
+        judges?: Array<{
+            model: string;
+            provider: string;
+        }>;
+        memorySnapshot?: {
+            [key: string]: unknown;
+        };
+        operationId?: string;
+    }>;
+    tokens?: number;
+    toolCalls?: number;
+    totalCost?: number;
+    totalDuration?: number;
+    totalTokens?: number;
+    dispatchedAt?: string;
+    errorDetail?: unknown;
+    errorPhase?: 'judge';
+    executionId?: string;
+    judgeError?: string;
+    judges?: Array<{
+        model: string;
+        provider: string;
+    }>;
+    memorySnapshot?: {
+        [key: string]: unknown;
+    };
+    operationId?: string;
+};
+
+export type EvalRubricScore = {
+    reason?: string;
+    rubricId: string;
+    score: number;
+    verdicts?: Array<{
+        reason?: string;
+        rule: string;
+        verdict: 'satisfied' | 'unverifiable' | 'violated';
+    }>;
 };
 
 export type EvalRunResult = {
     createdAt: string;
     input: string;
-    passed?: boolean | null;
-    result?: {
-        [key: string]: unknown;
-    } | null;
-    score?: number | null;
-    status?: string | null;
+    passed: boolean | null;
+    result: EvalCaseResult | null;
+    score: number | null;
+    status: 'pending' | 'running' | 'passed' | 'failed' | 'error' | 'timeout' | 'external' | 'completed' | 'judge_error' | null;
     testCaseId: string;
     topicId: string;
+};
+
+export type EvalCaseResult = {
+    awaitingExternalEval?: boolean;
+    completionReason?: string;
+    cost?: number;
+    duration?: number;
+    error?: string;
+    externalResult?: {
+        [key: string]: unknown;
+    };
+    externalThreadResults?: {
+        [key: string]: unknown;
+    };
+    extractedAnswer?: string;
+    llmCalls?: number;
+    passAllK?: boolean;
+    passAtK?: boolean;
+    rubricScores?: Array<EvalRubricScore>;
+    steps?: number;
+    threads?: Array<EvalThreadResult>;
+    tokens?: number;
+    toolCalls?: number;
+    totalCost?: number;
+    totalDuration?: number;
+    totalTokens?: number;
+};
+
+export type EvalThreadResult = {
+    completionReason?: string;
+    cost?: number;
+    duration?: number;
+    error?: string;
+    llmCalls?: number;
+    passed?: boolean;
+    rubricScores?: Array<EvalRubricScore>;
+    score?: number;
+    status?: 'error' | 'external' | 'failed' | 'passed' | 'running' | 'timeout' | 'completed' | 'judge_error';
+    steps?: number;
+    threadId: string;
+    tokens?: number;
+    toolCalls?: number;
+};
+
+export type EvalBenchmark = {
+    createdAt: string;
+    description: string | null;
+    id: string;
+    identifier: string;
+    isSystem: boolean;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    name: string;
+    referenceUrl: string | null;
+    rubrics: Array<EvalBenchmarkRubric>;
+    updatedAt: string;
+};
+
+export type EvalBenchmarkRubric = {
+    config: {
+        value: string;
+        threshold?: number;
+    } | {
+        value: number;
+        tolerance?: number;
+    } | {
+        pattern: string;
+    } | {
+        code: string;
+    } | {
+        criteria: string;
+        model?: string;
+        provider?: string;
+        systemRole?: string;
+    } | {
+        values: Array<string>;
+        caseSensitive?: boolean;
+    } | {
+        schema: {
+            [key: string]: unknown;
+        };
+    } | {
+        extractor: {
+            type: 'regex';
+            pattern: string;
+            group?: number;
+        } | {
+            type: 'delimiter';
+            delimiter: string;
+            position?: 'first' | 'last';
+        } | {
+            type: 'last-line';
+            trim?: boolean;
+        } | {
+            type: 'choice-index';
+            labels?: Array<string>;
+            pattern?: string;
+        };
+        innerMatcher?: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external';
+    };
+    extractor?: {
+        type: 'regex';
+        pattern: string;
+        group?: number;
+    } | {
+        type: 'delimiter';
+        delimiter: string;
+        position?: 'first' | 'last';
+    } | {
+        type: 'last-line';
+        trim?: boolean;
+    } | {
+        type: 'choice-index';
+        labels?: Array<string>;
+        pattern?: string;
+    };
+    id: string;
+    name: string;
+    threshold?: number;
+    type: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'rule-checklist' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external';
+    weight: number;
+};
+
+export type EvalDataset = {
+    benchmarkId: string | null;
+    createdAt: string;
+    description: string | null;
+    evalConfig: {
+        [key: string]: unknown;
+    } | null;
+    evalMode: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'rule-checklist' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external' | null;
+    id: string;
+    identifier: string;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    name: string;
+    sourceExperimentId: string | null;
+    testCaseCount: number;
+    updatedAt: string;
+};
+
+export type EvalTestCase = {
+    caseId?: string;
+    category?: string;
+    choices?: Array<string>;
+    content: {
+        category?: string;
+        choices?: Array<string>;
+        environment?: {
+            [key: string]: unknown;
+        };
+        expected?: string;
+        input: string;
+        messages?: Array<{
+            content: string;
+            role: 'user' | 'assistant' | 'system' | 'tool';
+            id?: string;
+            parentId?: string | null;
+            model?: string;
+            provider?: string;
+            createdAt?: string | number;
+            updatedAt?: string | number;
+            tools?: Array<{
+                [key: string]: unknown;
+            }>;
+            tool_call_id?: string;
+            metadata?: {
+                [key: string]: unknown;
+            };
+            reasoning?: {
+                [key: string]: unknown;
+            };
+            plugin?: {
+                [key: string]: unknown;
+            };
+            pluginState?: {
+                [key: string]: unknown;
+            };
+            pluginError?: {
+                [key: string]: unknown;
+            };
+            pluginIntervention?: {
+                [key: string]: unknown;
+            };
+            error?: {
+                [key: string]: unknown;
+            };
+            search?: {
+                [key: string]: unknown;
+            };
+        }>;
+    };
+    createdAt: string;
+    datasetId: string;
+    environment?: {
+        [key: string]: unknown;
+    };
+    evalConfig: {
+        [key: string]: unknown;
+    } | null;
+    evalMode: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'rule-checklist' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external' | null;
+    expected?: string;
+    id: string;
+    input: string;
+    messages?: Array<{
+        content: string;
+        role: 'user' | 'assistant' | 'system' | 'tool';
+        id?: string;
+        parentId?: string | null;
+        model?: string;
+        provider?: string;
+        createdAt?: string | number;
+        updatedAt?: string | number;
+        tools?: Array<{
+            [key: string]: unknown;
+        }>;
+        tool_call_id?: string;
+        metadata?: {
+            [key: string]: unknown;
+        };
+        reasoning?: {
+            [key: string]: unknown;
+        };
+        plugin?: {
+            [key: string]: unknown;
+        };
+        pluginState?: {
+            [key: string]: unknown;
+        };
+        pluginError?: {
+            [key: string]: unknown;
+        };
+        pluginIntervention?: {
+            [key: string]: unknown;
+        };
+        error?: {
+            [key: string]: unknown;
+        };
+        search?: {
+            [key: string]: unknown;
+        };
+    }>;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    sortOrder: number | null;
+    updatedAt: string;
+};
+
+export type EvalRetryErrors = {
+    retryCount: number;
+    runId: string;
+};
+
+export type EvalReportResult = {
+    idempotent: boolean;
+    reportedThreads: number;
+    runId: string;
+    success: true;
+    threadId?: string;
+    topicFinalized: boolean;
+    topicId: string;
+    totalThreads: number;
+    runStatus: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'aborted' | 'external';
+};
+
+export type EvalBatchReportResult = {
+    items: Array<EvalReportReceipt>;
+    runId: string;
+    runStatus: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'aborted' | 'external';
+    success: true;
+};
+
+export type EvalReportReceipt = {
+    idempotent: boolean;
+    reportedThreads: number;
+    runId: string;
+    success: true;
+    threadId?: string;
+    topicFinalized: boolean;
+    topicId: string;
+    totalThreads: number;
+};
+
+export type InstalledPluginList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    plugins: Array<InstalledPlugin>;
+    total: PageTotal;
+};
+
+export type InstalledPlugin = {
+    createdAt: string;
+    identifier: string;
+    type: 'plugin' | 'customPlugin';
+    updatedAt: string;
+};
+
+export type FileList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    files: Array<FileListItem>;
+    total: PageTotal;
+    totalSize: string;
+};
+
+export type FileListItem = {
+    createdAt: string;
+    fileType: string;
+    id: string;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    name: string;
+    parentId: string | null;
+    size: number;
+    source: string | null;
+    updatedAt: string;
+    url: string;
+    visibility: 'private' | 'public';
+    chunking: FileAsyncTask | null;
+    embedding: FileAsyncTask | null;
+    knowledgeBases: Array<FileKnowledgeBaseRef>;
+    users: Array<FileUser>;
+};
+
+export type FileAsyncTask = {
+    count?: number | null;
+    error: AsyncTaskError | null;
+    id?: string;
+    status: 'error' | 'pending' | 'processing' | 'success' | null;
+    type?: 'chunk' | 'embedding';
+};
+
+export type AsyncTaskError = {
+    body: string | {
+        detail: string;
+        retryAt?: string;
+    };
+    name: string;
+};
+
+export type FileKnowledgeBaseRef = {
+    avatar: string | null;
+    description: string | null;
+    id: string;
+    name: string;
+};
+
+export type FileUser = {
+    avatar: string | null;
+    email: string | null;
+    fullName: string | null;
+    id: string;
+    username: string | null;
+};
+
+export type FileDetail = {
+    file: File;
+    parsed?: FileParseResult;
 };
 
 export type File = {
     createdAt: string;
     fileType: string;
     id: string;
-    metadata?: {
+    metadata: {
         [key: string]: unknown;
     } | null;
     name: string;
-    parentId?: string | null;
+    parentId: string | null;
     size: number;
-    source?: string | null;
+    source: string | null;
     updatedAt: string;
     url: string;
-    visibility?: 'private' | 'public';
-    [key: string]: unknown;
+    visibility: 'private' | 'public';
+};
+
+export type FileParseResult = {
+    content?: string | null;
+    error?: string;
+    fileId: string;
+    fileType: string;
+    metadata?: {
+        pages: number;
+        title?: string;
+        totalCharCount?: number;
+        totalLineCount?: number;
+    };
+    name: string;
+    parseStatus: 'completed' | 'failed';
+    parsedAt?: string;
+};
+
+export type FileUrl = {
+    expiresAt: string;
+    expiresIn: number;
+    fileId: string;
+    name: string;
+    url: string;
+};
+
+export type FileChunkTask = {
+    chunkTaskId: string | null;
+    embeddingTaskId: string | null;
+    fileId: string;
+    message: string;
+    success: true;
+};
+
+export type FileChunkStatus = {
+    chunkCount: number;
+    chunkingError: AsyncTaskError | null;
+    chunkingStatus: 'error' | 'pending' | 'processing' | 'success' | null;
+    embeddingError: AsyncTaskError | null;
+    embeddingStatus: 'error' | 'pending' | 'processing' | 'success' | null;
+    finishEmbedding: boolean;
+};
+
+export type BatchFileUploadResult = {
+    failed: Array<{
+        error: string;
+        name: string;
+    }>;
+    successful: Array<FileDetail>;
+    summary: {
+        failed: number;
+        successful: number;
+        total: number;
+    };
+};
+
+export type BatchGetFilesResult = {
+    failed: Array<{
+        error: string;
+        fileId: string;
+    }>;
+    files: Array<FileDetail>;
+    success: number;
+    total: number;
+};
+
+export type GoalList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    goals: Array<GoalListItem>;
+    total: PageTotal;
+};
+
+export type GoalListItem = {
+    findingCount: number;
+    goal: Goal;
+    pendingDecisions: number;
+    signedOff: boolean;
+    taskDone: number;
+    taskTotal: number;
+    totalRunCost: number;
+    totalRunDuration: number;
+};
+
+export type Goal = {
+    agentId: string | null;
+    archivedAt: string | null;
+    completedAt: string | null;
+    config: {
+        [key: string]: unknown;
+    } | null;
+    createdAt: string;
+    deletedAt: string | null;
+    id: string;
+    isDeleted: boolean | null;
+    maxRounds: number | null;
+    maxTotalCost: number | null;
+    projectId: string | null;
+    requirement: string | null;
+    startedAt: string | null;
+    status: 'draft' | 'planning' | 'running' | 'verifying' | 'review' | 'paused' | 'achieved' | 'failed' | 'canceled';
+    subjectId: string | null;
+    subjectType: 'task' | 'topic' | 'standalone' | null;
+    title: string;
+    updatedAt: string;
+    userId: string;
+    visibility: 'private' | 'public';
+    workspaceId: string | null;
+};
+
+export type GoalGraphSnapshot = {
+    decisions: Array<GoalGraphDecision>;
+    edges: Array<GoalGraphEdge>;
+    events: Array<GoalGraphEvent>;
+    goal: Goal;
+    nodes: Array<GoalGraphNode>;
+    workVersions: Array<GoalGraphWorkVersionLink>;
+};
+
+export type GoalGraphDecision = {
+    accessedAt: string;
+    authority: 'agent' | 'user' | 'project_role';
+    canceledAt: string | null;
+    createdAt: string;
+    id: string;
+    nodeId: string;
+    options: Array<GoalDecisionOption> | null;
+    question: string;
+    recommendedOptionId: string | null;
+    requestedProjectRole: string | null;
+    requestedUserId: string | null;
+    resolution: string | null;
+    resolvedAt: string | null;
+    resolvedByAgentId: string | null;
+    resolvedByUserId: string | null;
+    resolvedOptionId: string | null;
+    status: 'pending' | 'resolved' | 'canceled';
+    updatedAt: string;
+};
+
+export type GoalDecisionOption = {
+    alsoRetires?: Array<{
+        nodeId: string;
+        title: string;
+    }>;
+    description?: string;
+    effect?: 'retry' | 'retire' | 'retry_after_reset';
+    id: string;
+    label: string;
+};
+
+export type GoalGraphEdge = {
+    createdAt: string;
+    goalId: string;
+    id: string;
+    kind: 'contains' | 'answers' | 'decomposes' | 'depends_on' | 'derived_from' | 'revises' | 'investigates' | 'produces' | 'supports' | 'contradicts' | 'leads_to' | 'confirms' | 'refutes';
+    sourceNodeId: string;
+    targetNodeId: string;
+};
+
+export type GoalGraphEvent = {
+    actorId: string | null;
+    actorType: 'agent' | 'user' | 'system';
+    createdAt: string;
+    entityId: string;
+    entityType: 'goal' | 'node' | 'edge' | 'decision' | 'task';
+    eventType: 'created' | 'updated' | 'activated' | 'resolved' | 'rejected' | 'retired' | 'linked' | 'unlinked';
+    goalId: string;
+    id: string;
+    operationId: string | null;
+    reason: string | null;
+    taskId: string | null;
+};
+
+export type GoalGraphNode = {
+    accessedAt: string;
+    confidence: string | null;
+    createdAt: string;
+    createdByAgentId: string | null;
+    createdByUserId: string | null;
+    description: string | null;
+    goalId: string;
+    id: string;
+    kind: 'problem' | 'experiment' | 'task' | 'finding' | 'decision' | 'batch' | 'pattern' | 'tool' | 'hazard' | 'dead_end' | 'template';
+    priority: number;
+    resolvedAt: string | null;
+    status: 'proposed' | 'active' | 'waiting' | 'resolved' | 'rejected' | 'retired';
+    taskId: string | null;
+    title: string;
+    updatedAt: string;
+};
+
+export type GoalGraphWorkVersionLink = {
+    createdAt: string;
+    id: string;
+    nodeId: string;
+    relation: 'input' | 'produced' | 'supports' | 'contradicts';
+    work?: {
+        agentDocumentId?: string;
+        fileId?: string;
+        fileSize?: number;
+        fileUrl?: string;
+        identifier: string | null;
+        mimeType?: string;
+        resourceId: string | null;
+        resourceType?: 'canvas' | 'document' | 'github_issue' | 'github_pull_request' | 'linear_document' | 'linear_issue' | 'link' | 'file' | 'collection' | 'goal_report' | 'task';
+        status: string | null;
+        title: string | null;
+        type: 'canvas' | 'document' | 'external' | 'file' | 'collection' | 'goal_report' | 'task';
+        url: string | null;
+        workId: string;
+    };
+    workVersionId: string;
+};
+
+export type GoalGraph = {
+    decisions: Array<GoalGraphDecision>;
+    edges: Array<GoalGraphEdge>;
+    events: Array<GoalGraphEvent>;
+    goal: Goal;
+    nodes: Array<GoalGraphNode>;
+    workVersions: Array<GoalGraphWorkVersionLink>;
+    acceptances?: {
+        [key: string]: {
+            checks?: {
+                failed: number;
+                passed: number;
+                total: number;
+                unjudged: number;
+            };
+            id: string;
+            status: 'pending' | 'planned' | 'verifying' | 'repairing' | 'delivered' | 'accepted' | 'closed' | 'rejected' | 'errored';
+        };
+    };
+    assignees?: {
+        [key: string]: string;
+    };
+    deliveredAt?: {
+        [key: string]: string;
+    };
+    metricCriteria: {
+        allMet: boolean;
+        criteria: Array<{
+            key: string;
+            met: boolean;
+            observedAt?: number;
+            op: string;
+            target: number;
+            value: number | null;
+        }>;
+    };
+    quotaRetryAt?: {
+        [key: string]: string;
+    };
+    report?: {
+        dispatch: {
+            acceptanceKey: string;
+            dispatchedAt: string;
+            error?: string;
+            nodeId: string;
+            operationId?: string;
+            taskId?: string;
+            trigger: 'accepted' | 'acceptance_failed' | 'goal_canceled' | 'goal_failed';
+        };
+        latest?: {
+            content: string | null;
+            createdAt: string;
+            metadata: {
+                chapters: Array<{
+                    detours?: Array<{
+                        kind: 'dead_end' | 'superseded' | 'retry';
+                        lesson: string;
+                        nodeIds: Array<string>;
+                        reason: string;
+                        title: string;
+                    }>;
+                    findingIds?: Array<string>;
+                    narrative: string;
+                    nodeIds?: Array<string>;
+                    title: string;
+                    workVersionIds?: Array<string>;
+                }>;
+                deliverableWorkId?: string;
+                graphCursor: string;
+                headline: string;
+                mainline?: {
+                    edgeIds?: Array<string>;
+                    nodeIds: Array<string>;
+                };
+                nextSteps?: Array<{
+                    nodeIds?: Array<string>;
+                    reason: string;
+                    title: string;
+                }>;
+            };
+            pageDocumentId?: string;
+            version: number;
+            workId: string;
+            workVersionId: string;
+        };
+        status: 'completed' | 'failed' | 'running';
+    };
+    runHeartbeats?: {
+        [key: string]: string;
+    };
+    spend: {
+        byTask: Array<{
+            runs: number;
+            taskId: string;
+            totalCost: number;
+            totalInputTokens: number;
+            totalOutputTokens: number;
+            totalTokens: number;
+        }>;
+        runs: number;
+        totalCost: number;
+        totalInputTokens: number;
+        totalOutputTokens: number;
+        totalTokens: number;
+    };
+};
+
+export type GoalSupervision = {
+    enabled: boolean;
+    state?: {
+        agentId: string;
+        incidents: Array<{
+            createdAt: string;
+            eligible: boolean;
+            failedOperationId: string;
+            id: string;
+            inspected?: {
+                artifactVersionIds?: Array<string>;
+                goal?: boolean;
+                task?: boolean;
+            };
+            nodeId: string;
+            reason: string;
+            recoveryInstruction?: string;
+            recoveryOperationId?: string;
+            resolution?: {
+                action: 'retry' | 'escalate';
+                instruction: string;
+                reason: string;
+                toolCallId: string;
+            };
+            resolvedAt?: string;
+            status: 'diagnosing' | 'retrying' | 'recovered' | 'escalated' | 'unsuccessful' | 'human_resumed';
+            supervisorOperationId?: string;
+            taskId: string;
+            taskStatus?: string;
+        }>;
+        revision: number;
+        topicId: string;
+    };
+};
+
+export type GoalAdvanceResult = {
+    goalId: string;
+    message: string;
+    nodeId?: string;
+    outcome: 'advanced' | 'achieved' | 'waiting_human' | 'waiting_external' | 'no_progress' | 'failed';
+    taskId?: string;
+    ticks: number;
+};
+
+export type GoalRestartResult = {
+    goal: Goal;
+    restartedTaskIds: Array<string>;
+};
+
+export type ImSendResult = {
+    accepted: boolean;
+    operationId: string | null;
+    topicId: string;
+    userMessage: ImMessage;
+};
+
+export type ImMessage = {
+    agentId: string | null;
+    content: string;
+    createdAt: string;
+    error: boolean;
+    files?: Array<{
+        fileType: string;
+        id: string;
+        name: string;
+        size: number;
+        url: string;
+    }>;
+    id: string;
+    role: 'assistant' | 'user';
+};
+
+export type ImSyncResult = {
+    cursor: string;
+    messages: Array<ImMessage>;
+    readUpTo: {
+        messageId: string;
+        readAt: string;
+    } | null;
+    state: string;
+    typing: boolean;
+    unread: number;
+};
+
+export type ImReadResult = {
+    unread: number;
+};
+
+export type KnowledgeBaseList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    knowledgeBases: Array<KnowledgeBaseListItem>;
+    total: PageTotal;
+};
+
+export type KnowledgeBaseListItem = {
+    avatar: string | null;
+    createdAt: string;
+    description: string | null;
+    id: string;
+    isPublic: boolean | null;
+    name: string;
+    settings: {
+        [key: string]: unknown;
+    } | null;
+    type: string | null;
+    updatedAt: string;
+    visibility: 'private' | 'public';
+    accessType: 'owner' | 'userGrant' | 'roleGrant' | 'public';
+};
+
+export type KnowledgeBaseDetail = {
+    knowledgeBase: KnowledgeBase;
 };
 
 export type KnowledgeBase = {
-    avatar?: string | null;
+    avatar: string | null;
     createdAt: string;
-    description?: string | null;
+    description: string | null;
     id: string;
-    isPublic?: boolean | null;
+    isPublic: boolean | null;
     name: string;
-    settings?: {
+    settings: {
         [key: string]: unknown;
     } | null;
-    type?: string | null;
+    type: string | null;
     updatedAt: string;
-    visibility?: 'private' | 'public';
-    [key: string]: unknown;
+    visibility: 'private' | 'public';
 };
 
-export type Message = {
-    agentId?: string | null;
-    content?: string | null;
-    createdAt: string;
-    error?: {
-        [key: string]: unknown;
-    } | null;
-    favorite?: boolean | null;
-    id: string;
-    metadata?: {
-        [key: string]: unknown;
-    } | null;
-    model?: string | null;
-    parentId?: string | null;
-    provider?: string | null;
-    reasoning?: {
-        [key: string]: unknown;
-    } | null;
-    role: string;
-    search?: {
-        [key: string]: unknown;
-    } | null;
-    threadId?: string | null;
-    tools?: {
-        [key: string]: unknown;
-    } | null;
-    topicId?: string | null;
-    updatedAt: string;
-    usage?: {
-        [key: string]: unknown;
-    } | null;
-    [key: string]: unknown;
+export type KnowledgeBaseFileOperationResult = {
+    failed: Array<{
+        fileId: string;
+        reason: string;
+    }>;
+    successed: Array<string>;
 };
 
 export type McpServer = {
     createdAt: string;
-    description?: string | null;
+    description: string | null;
     hasCredentials: boolean;
     id: string;
     identifier: string;
@@ -215,138 +1319,1338 @@ export type McpServer = {
     name: string;
     serverUrl: string;
     status: 'connected' | 'disconnected' | 'error';
-    tools: Array<{
-        description?: string | null;
-        id: string;
-        inputSchema?: {
-            [key: string]: unknown;
-        } | null;
-        name: string;
-        permission: 'auto' | 'needs_approval' | 'disabled';
-    }>;
+    tools: Array<McpServerTool>;
     updatedAt: string;
 };
 
-export type Model = {
-    abilities?: {
-        [key: string]: unknown;
-    } | null;
-    config?: {
-        [key: string]: unknown;
-    } | null;
-    contextWindowTokens?: number | null;
-    createdAt: string;
-    description?: string | null;
-    displayName?: string | null;
-    enabled?: boolean | null;
+export type McpServerTool = {
+    description: string | null;
     id: string;
-    organization?: string | null;
-    parameters?: {
+    inputSchema: {
         [key: string]: unknown;
     } | null;
-    pricing?: {
+    name: string;
+    permission: 'auto' | 'disabled' | 'needs_approval';
+};
+
+export type McpServerSyncResult = {
+    id: string;
+    status: 'connected';
+    toolCount: number;
+};
+
+export type MemoryPersona = {
+    content: string;
+    summary: string;
+};
+
+export type MemoryPersonaVersion = {
+    createdAt: string;
+    id: string;
+    nextVersion: number | null;
+    previousVersion: number | null;
+    snapshotPersona: string | null;
+    snapshotTagline: string | null;
+};
+
+export type DeletedResources = {
+    count: number;
+    deleted: true;
+};
+
+export type MemoryCategoryEntries = Array<MemoryIdentity> | Array<MemoryPreference> | Array<MemoryContext> | Array<MemoryActivity> | Array<MemoryExperience>;
+
+export type MemoryIdentity = {
+    accessedAt: string;
+    capturedAt: string;
+    createdAt: string;
+    id: string;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    tags: Array<string> | null;
+    type: string | null;
+    updatedAt: string;
+    userId: string | null;
+    description: string | null;
+    entityId: string | null;
+    episodicDate: string | null;
+    relationship: string | null;
+    role: string | null;
+    userMemoryId: string | null;
+};
+
+export type MemoryPreference = {
+    accessedAt: string;
+    capturedAt: string;
+    createdAt: string;
+    id: string;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    tags: Array<string> | null;
+    type: string | null;
+    updatedAt: string;
+    userId: string | null;
+    appliesToEntityId: string | null;
+    conclusionDirectives: string | null;
+    evidenceCount: number;
+    evidenceSource: 'stated' | 'reported' | 'inferred' | null;
+    holderEntityId: string | null;
+    lastEvidenceAt: string | null;
+    scope: string | null;
+    scorePriority: number | null;
+    suggestions: string | null;
+    userMemoryId: string | null;
+};
+
+export type MemoryContext = {
+    accessedAt: string;
+    capturedAt: string;
+    createdAt: string;
+    id: string;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    tags: Array<string> | null;
+    type: string | null;
+    updatedAt: string;
+    userId: string | null;
+    associatedObjects: Array<{
+        extra?: {
+            [key: string]: unknown;
+        };
+        name?: string;
+        type?: string;
+    }> | null;
+    associatedSubjects: Array<{
+        extra?: {
+            [key: string]: unknown;
+        };
+        name?: string;
+        type?: string;
+    }> | null;
+    currentStatus: string | null;
+    description: string | null;
+    firstSeenAt: string | null;
+    lastEvidenceAt: string | null;
+    nextSteps: Array<string> | null;
+    now: string | null;
+    openQuestions: Array<string> | null;
+    scoreImpact: number | null;
+    scoreUrgency: number | null;
+    synthesizedAt: string | null;
+    title: string | null;
+    userMemoryId: string | null;
+    userMemoryIds: Array<string> | null;
+};
+
+export type MemoryActivity = {
+    accessedAt: string;
+    capturedAt: string;
+    createdAt: string;
+    id: string;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    tags: Array<string> | null;
+    type: string;
+    updatedAt: string;
+    userId: string | null;
+    associatedLocations: Array<{
+        address?: string;
+        name?: string;
+        tags?: Array<string>;
+        type?: string;
+    }> | null;
+    associatedObjects: Array<{
+        extra?: {
+            [key: string]: unknown;
+        };
+        name?: string;
+        type?: string;
+    }> | null;
+    associatedSubjects: Array<{
+        extra?: {
+            [key: string]: unknown;
+        };
+        name?: string;
+        type?: string;
+    }> | null;
+    dossierId: string | null;
+    endsAt: string | null;
+    feedback: string | null;
+    injectable: boolean;
+    narrative: string | null;
+    notes: string | null;
+    startsAt: string | null;
+    status: string;
+    timezone: string | null;
+    userMemoryId: string | null;
+};
+
+export type MemoryExperience = {
+    accessedAt: string;
+    capturedAt: string;
+    createdAt: string;
+    id: string;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    tags: Array<string> | null;
+    type: string | null;
+    updatedAt: string;
+    userId: string | null;
+    action: string | null;
+    keyLearning: string | null;
+    possibleOutcome: string | null;
+    reasoning: string | null;
+    scoreConfidence: number | null;
+    situation: string | null;
+    userMemoryId: string | null;
+};
+
+export type MessageTranslationWrite = {
+    content?: string;
+    from?: string;
+    id: string;
+    to: string;
+    userId: string;
+};
+
+export type MessageTranslation = {
+    clientId: string | null;
+    content: string | null;
+    from: string | null;
+    id: string;
+    to: string | null;
+    userId: string;
+};
+
+export type Message = {
+    agentId: string | null;
+    content: string | null;
+    createdAt: string;
+    error: {
+        [key: string]: unknown;
+    } | null;
+    favorite: boolean | null;
+    files: Array<{
+        createdAt: string;
+        fileType: string;
+        id: string;
+        metadata: {
+            [key: string]: unknown;
+        } | null;
+        name: string;
+        parentId: string | null;
+        size: number;
+        source: string | null;
+        updatedAt: string;
+        url: string;
+        visibility: 'private' | 'public';
+    }>;
+    groupId: string | null;
+    id: string;
+    messageGroupId: string | null;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    model: string | null;
+    observationId: string | null;
+    parentId: string | null;
+    provider: string | null;
+    quotaId: string | null;
+    reasoning: {
+        [key: string]: unknown;
+    } | null;
+    role: string;
+    search: {
+        [key: string]: unknown;
+    } | null;
+    session: {
+        avatar: string | null;
+        backgroundColor: string | null;
+        createdAt: string;
+        description: string | null;
+        groupId: string | null;
+        id: string;
+        pinned: boolean | null;
+        slug: string;
+        title: string | null;
+        type: 'agent' | 'group' | null;
+        updatedAt: string;
+    } | null;
+    sessionId: string | null;
+    summary: string | null;
+    targetId: string | null;
+    threadId: string | null;
+    tools: Array<{
+        [key: string]: unknown;
+    }> | null;
+    topic: TopicSummary | null;
+    topicId: string | null;
+    traceId: string | null;
+    updatedAt: string;
+    usage: {
+        [key: string]: unknown;
+    } | null;
+};
+
+export type TopicSummary = {
+    agentId: string | null;
+    completedAt: string | null;
+    content: string | null;
+    cost: {
+        [key: string]: unknown;
+    } | null;
+    createdAt: string;
+    description: string | null;
+    favorite: boolean | null;
+    groupId: string | null;
+    historySummary: string | null;
+    id: string;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    mode: string | null;
+    model: string | null;
+    provider: string | null;
+    sessionId: string | null;
+    status: 'active' | 'running' | 'waitingForHuman' | 'scheduled' | 'failed' | 'completed' | 'archived' | 'unread' | null;
+    title: string | null;
+    totalCost: number | null;
+    totalInputTokens: number | null;
+    totalOutputTokens: number | null;
+    totalTokens: number | null;
+    trigger: string | null;
+    updatedAt: string;
+    usage: {
+        [key: string]: unknown;
+    } | null;
+};
+
+export type Model = {
+    abilities: {
+        [key: string]: unknown;
+    } | null;
+    config: {
+        [key: string]: unknown;
+    } | null;
+    contextWindowTokens: number | null;
+    createdAt: string;
+    description: string | null;
+    displayName: string | null;
+    enabled: boolean | null;
+    id: string;
+    organization: string | null;
+    parameters: {
+        [key: string]: unknown;
+    } | null;
+    pricing: {
         [key: string]: unknown;
     } | null;
     providerId: string;
-    releasedAt?: string | null;
-    settings?: {
+    releasedAt: string | null;
+    settings: {
         [key: string]: unknown;
     } | null;
-    sort?: number | null;
-    source?: string | null;
+    sort: number | null;
+    source: 'remote' | 'custom' | 'builtin' | null;
     type: string;
     updatedAt: string;
+};
+
+export type Notification = {
+    actionUrl: string | null;
+    category: string;
+    content: string;
+    context: string | null;
+    createdAt: string;
+    dedupeKey: string | null;
+    id: string;
+    isArchived: boolean;
+    isRead: boolean;
+    metadata: {
+        actor?: {
+            avatar?: string;
+            name?: string;
+            userId?: string;
+        };
+        agent?: {
+            avatar?: string;
+            backgroundColor?: string;
+            id: string;
+            name?: string;
+        };
+        transfer?: {
+            requestId: string;
+        };
+    } | null;
+    title: string;
+    type: string;
+    updatedAt: string;
+    userId: string;
+    workspaceId: string | null;
+};
+
+export type NotificationSettings = {
+    content?: {
+        scheduledTaskSummary?: boolean;
+    };
+    email?: {
+        enabled?: boolean;
+        items?: {
+            [key: string]: {
+                [key: string]: boolean;
+            };
+        };
+    };
+    im?: {
+        enabled?: boolean;
+        items?: {
+            [key: string]: {
+                [key: string]: boolean;
+            };
+        };
+        platforms?: {
+            [key: string]: {
+                enabled?: boolean;
+                items?: {
+                    [key: string]: {
+                        [key: string]: boolean;
+                    };
+                };
+                tenantId?: string;
+            };
+        };
+    };
+    inbox?: {
+        enabled?: boolean;
+        items?: {
+            [key: string]: {
+                [key: string]: boolean;
+            };
+        };
+    };
+    push?: {
+        enabled?: boolean;
+        items?: {
+            [key: string]: {
+                [key: string]: boolean;
+            };
+        };
+    };
+};
+
+export type NotificationUnreadCount = {
+    count: number;
+};
+
+export type NotificationCategoryCount = {
+    category: string;
+    readCount: number;
+    totalCount: number;
+    unreadCount: number;
+};
+
+export type PermissionList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    permissions: Array<Permission>;
+    total: PageTotal;
 };
 
 export type Permission = {
     category: string;
     code: string;
     createdAt: string;
-    description?: string | null;
+    description: string | null;
     id: string;
-    isActive?: boolean | null;
+    isActive: boolean;
     name: string;
     updatedAt: string;
 };
 
 export type Provider = {
-    checkModel?: string | null;
-    config?: {
+    checkModel: string | null;
+    config: {
         [key: string]: unknown;
     } | null;
     createdAt: string;
-    description?: string | null;
-    enabled?: boolean | null;
-    fetchOnClient?: boolean | null;
+    description: string | null;
+    enabled: boolean | null;
+    fetchOnClient: boolean | null;
     id: string;
-    logo?: string | null;
-    name?: string | null;
-    settings?: {
+    logo: string | null;
+    name: string | null;
+    settings: {
         [key: string]: unknown;
     } | null;
-    sort?: number | null;
-    source?: string | null;
+    sort: number | null;
+    source: 'builtin' | 'custom' | null;
     updatedAt: string;
+};
+
+export type PushTokenRegistration = {
+    deviceId: string;
+    platform: string;
+};
+
+export type ResponseObject = {
+    background: boolean;
+    completed_at: number | null;
+    created_at: number;
+    error: ResponseError | null;
+    frequency_penalty: number;
+    id: string;
+    incomplete_details: {
+        reason: string;
+    } | null;
+    instructions: string | null;
+    max_output_tokens: number | null;
+    max_tool_calls: number | null;
+    metadata: {
+        [key: string]: string;
+    };
+    model: string;
+    object: 'response';
+    output: Array<ResponseOutputItem>;
+    output_text: string;
+    parallel_tool_calls: boolean;
+    presence_penalty: number;
+    previous_response_id: string | null;
+    prompt_cache_key: string | null;
+    reasoning: {
+        effort?: 'low' | 'medium' | 'high';
+    } | null;
+    safety_identifier: string | null;
+    service_tier: string;
+    status: 'completed' | 'failed' | 'in_progress' | 'incomplete' | 'queued';
+    store: boolean;
+    temperature: number;
+    text: {
+        format: {
+            type: 'text';
+        };
+    };
+    tool_choice: 'auto' | 'required' | 'none' | {
+        name: string;
+        type: 'function';
+    };
+    tools: Array<{
+        description?: string;
+        name: string;
+        parameters?: {
+            [key: string]: unknown;
+        };
+        strict: boolean | null;
+        type: 'function';
+    } | {
+        strict: null;
+        type: string;
+    }>;
+    top_logprobs: number;
+    top_p: number;
+    truncation: 'auto' | 'disabled';
+    usage: ResponseUsage;
+    user: string | null;
+};
+
+export type ResponseError = {
+    code: 'server_error' | 'invalid_request_error' | 'not_found' | 'model_error' | 'rate_limit_error';
+    message: string;
+};
+
+export type ResponseOutputItem = ResponseOutputMessage | ResponseFunctionCall | ResponseFunctionCallOutput;
+
+export type ResponseOutputMessage = {
+    content: Array<ResponseOutputText>;
+    id: string;
+    role: 'assistant';
+    status: 'completed' | 'in_progress';
+    type: 'message';
+};
+
+export type ResponseOutputText = {
+    annotations: Array<{
+        end_index: number;
+        start_index: number;
+        title: string;
+        type: 'url_citation';
+        url: string;
+    } | {
+        file_id: string;
+        filename: string;
+        index: number;
+        type: 'file_citation';
+    }>;
+    logprobs: Array<{
+        bytes: Array<number>;
+        logprob: number;
+        token: string;
+        top_logprobs: Array<{
+            bytes: Array<number>;
+            logprob: number;
+            token: string;
+        }>;
+    }>;
+    text: string;
+    type: 'output_text';
+};
+
+export type ResponseFunctionCall = {
+    arguments: string;
+    call_id: string;
+    id: string;
+    name: string;
+    status: 'completed' | 'in_progress';
+    type: 'function_call';
+};
+
+export type ResponseFunctionCallOutput = {
+    call_id: string;
+    id: string;
+    output: string;
+    status: 'completed' | 'in_progress';
+    type: 'function_call_output';
+};
+
+export type ResponseUsage = {
+    input_tokens: number;
+    input_tokens_details: {
+        cached_tokens: number;
+    };
+    output_tokens: number;
+    output_tokens_details: {
+        reasoning_tokens: number;
+    };
+    total_tokens: number;
+};
+
+export type RoleList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    roles: Array<Role>;
+    total: PageTotal;
 };
 
 export type Role = {
     createdAt: string;
-    description?: string | null;
+    description: string | null;
     displayName: string;
     id: string;
-    isActive?: boolean | null;
-    isSystem?: boolean | null;
+    isActive: boolean;
+    isSystem: boolean;
     name: string;
     updatedAt: string;
 };
 
-export type Topic = {
-    agentId?: string | null;
-    completedAt?: string | null;
-    content?: string | null;
-    cost?: {
+export type RolePermissionList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    permissions: Array<RolePermission>;
+    total: PageTotal;
+};
+
+export type RolePermission = {
+    category: string;
+    code: string;
+    description: string | null;
+    id: string;
+    isActive: boolean;
+    name: string;
+};
+
+export type RolePermissionsUpdateResult = {
+    granted: number;
+    revoked: number;
+    roleId: string;
+};
+
+export type AgentSignalEmission = {
+    accepted: boolean;
+    scopeKey: string;
+    workflowRunId: string;
+};
+
+export type AgentSignalReceiptList = {
+    cursor?: number;
+    receipts: Array<AgentSignalReceipt>;
+};
+
+export type AgentSignalReceipt = {
+    agentId: string;
+    anchorMessageId?: string;
+    createdAt: number;
+    detail: string;
+    id: string;
+    kind: 'memory' | 'review' | 'skill';
+    metadata?: {
+        actionCount?: number;
+        actionStatus?: 'applied' | 'deduped' | 'failed' | 'proposed' | 'skipped';
+        actionType?: 'write_memory' | 'create_skill' | 'refine_skill' | 'refine_prompt' | 'consolidate_skill' | 'noop' | 'proposal_only';
+        agentDocumentId?: string;
+        documentId?: string;
+        evidenceRefs?: Array<{
+            id: string;
+            summary?: string;
+            type: 'topic' | 'message' | 'operation' | 'source' | 'receipt' | 'tool_call' | 'task' | 'agent_document' | 'memory';
+        }>;
+        expectedCurrentDocumentUpdatedAt?: string;
+        historyId?: string;
+        localDate?: string;
+        reviewScope?: 'nightly' | 'self_feedback' | 'self_reflection';
+        rollbackStatus?: 'available' | 'conflict' | 'failed' | 'not_found' | 'rolled_back' | 'unsupported';
+        scopeId?: string;
+        scopeType?: string;
+        selfIteration?: {
+            ideas?: Array<{
+                evidenceRefs: Array<{
+                    id: string;
+                    summary?: string;
+                    type: 'topic' | 'message' | 'operation' | 'source' | 'receipt' | 'tool_call' | 'task' | 'agent_document' | 'memory';
+                }>;
+                idempotencyKey: string;
+                rationale: string;
+                risk: 'high' | 'low' | 'medium';
+                target?: {
+                    memoryId?: string;
+                    readonly?: boolean;
+                    skillDocumentId?: string;
+                    skillName?: string;
+                    taskIds?: Array<string>;
+                    topicIds?: Array<string>;
+                };
+                title?: string;
+            }>;
+            intents?: Array<{
+                evidenceRefs: Array<{
+                    id: string;
+                    summary?: string;
+                    type: 'topic' | 'message' | 'operation' | 'source' | 'receipt' | 'tool_call' | 'task' | 'agent_document' | 'memory';
+                }>;
+                idempotencyKey: string;
+                rationale: string;
+                risk: 'high' | 'low' | 'medium';
+                target?: {
+                    memoryId?: string;
+                    readonly?: boolean;
+                    skillDocumentId?: string;
+                    skillName?: string;
+                    taskIds?: Array<string>;
+                    topicIds?: Array<string>;
+                };
+                title?: string;
+                actionType?: string;
+                confidence: number;
+                downgradeReason?: 'approval_required' | 'low_confidence' | 'unsupported_in_reflection';
+                intentType: 'memory' | 'skill' | 'tooling' | 'workflow';
+                mode: 'reflection';
+                operation?: {
+                    domain: 'memory';
+                    input: {
+                        content: string;
+                        userId: string;
+                    };
+                    operation: 'write';
+                } | {
+                    domain: 'skill';
+                    input: {
+                        bodyMarkdown?: string;
+                        description?: string;
+                        name?: string;
+                        title?: string;
+                        userId: string;
+                    };
+                    operation: 'create';
+                } | {
+                    domain: 'skill';
+                    input: {
+                        bodyMarkdown: string;
+                        description?: string;
+                        skillDocumentId: string;
+                        userId: string;
+                    };
+                    operation: 'refine';
+                } | {
+                    domain: 'skill';
+                    input: {
+                        bodyMarkdown?: string;
+                        canonicalSkillDocumentId: string;
+                        description?: string;
+                        sourceSkillIds: Array<string>;
+                        userId: string;
+                    };
+                    operation: 'consolidate';
+                };
+                urgency: 'immediate' | 'later' | 'soon';
+            }>;
+            mode: 'feedback' | 'reflection' | 'review';
+            reason?: string;
+            scope?: {
+                id: string;
+                type: string;
+            };
+            sourceId: string;
+            toolCallId?: string;
+            window?: {
+                end: string;
+                start: string;
+            };
+        };
+        sourceType?: string;
+        timezone?: string;
+    };
+    operationId?: string;
+    sourceId: string;
+    sourceType: string;
+    status: 'applied' | 'completed' | 'failed' | 'proposed' | 'skipped' | 'updated';
+    target?: {
+        agentDocumentId?: string;
+        documentId?: string;
+        id?: string;
+        memoryId?: string;
+        memoryLayer?: 'activity' | 'context' | 'experience' | 'identity' | 'preference';
+        operation?: 'create' | 'remove' | 'update';
+        summary?: string;
+        title?: string;
+        type: 'memory' | 'skill';
+    };
+    title: string;
+    topicId: string;
+    triggerMessageId?: string;
+    userId: string;
+};
+
+export type TaskList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    tasks: Array<TaskListItem>;
+    total: PageTotal;
+};
+
+export type TaskListItem = {
+    accessedAt: string;
+    archivedAt: string | null;
+    assigneeAgentId: string | null;
+    assigneeUserId: string | null;
+    automationMode: 'heartbeat' | 'schedule' | null;
+    completedAt: string | null;
+    config: {
+        [key: string]: unknown;
+    } | null;
+    context: {
         [key: string]: unknown;
     } | null;
     createdAt: string;
-    description?: string | null;
-    favorite?: boolean | null;
-    groupId?: string | null;
-    historySummary?: string | null;
+    createdByAgentId: string | null;
+    createdByUserId: string;
+    currentTopicId: string | null;
+    deletedAt: string | null;
+    description: string | null;
+    editorData: unknown;
+    error: string | null;
+    heartbeatInterval: number | null;
+    heartbeatTimeout: number | null;
     id: string;
-    metadata?: {
-        [key: string]: unknown;
-    } | null;
-    mode?: string | null;
-    model?: string | null;
-    provider?: string | null;
-    sessionId?: string | null;
-    status?: string | null;
-    title?: string | null;
-    totalCost?: number | null;
-    totalInputTokens?: number | null;
-    totalOutputTokens?: number | null;
-    totalTokens?: number | null;
-    trigger?: string | null;
+    identifier: string;
+    instruction: string;
+    isDeleted: boolean | null;
+    lastHeartbeatAt: string | null;
+    maxTopics: number | null;
+    name: string | null;
+    parentTaskId: string | null;
+    priority: number | null;
+    projectId: string | null;
+    schedulePattern: string | null;
+    scheduleTimezone: string | null;
+    seq: number;
+    sortOrder: number | null;
+    startedAt: string | null;
+    status: 'backlog' | 'running' | 'scheduled' | 'paused' | 'completed' | 'failed' | 'canceled';
+    totalTopics: number | null;
     updatedAt: string;
-    usage?: {
+    visibility: 'private' | 'public';
+    workspaceId: string | null;
+    labels: Array<TaskLabelRef>;
+    subtaskProgress?: {
+        completed: number;
+        total: number;
+    };
+};
+
+export type TaskLabelRef = {
+    color?: string | null;
+    id: string;
+    name: string;
+    parentId?: string | null;
+};
+
+export type Task = {
+    accessedAt: string;
+    archivedAt: string | null;
+    assigneeAgentId: string | null;
+    assigneeUserId: string | null;
+    automationMode: 'heartbeat' | 'schedule' | null;
+    completedAt: string | null;
+    config: {
         [key: string]: unknown;
     } | null;
-    [key: string]: unknown;
+    context: {
+        [key: string]: unknown;
+    } | null;
+    createdAt: string;
+    createdByAgentId: string | null;
+    createdByUserId: string;
+    currentTopicId: string | null;
+    deletedAt: string | null;
+    description: string | null;
+    editorData: unknown;
+    error: string | null;
+    heartbeatInterval: number | null;
+    heartbeatTimeout: number | null;
+    id: string;
+    identifier: string;
+    instruction: string;
+    isDeleted: boolean | null;
+    lastHeartbeatAt: string | null;
+    maxTopics: number | null;
+    name: string | null;
+    parentTaskId: string | null;
+    priority: number | null;
+    projectId: string | null;
+    schedulePattern: string | null;
+    scheduleTimezone: string | null;
+    seq: number;
+    sortOrder: number | null;
+    startedAt: string | null;
+    status: 'backlog' | 'running' | 'scheduled' | 'paused' | 'completed' | 'failed' | 'canceled';
+    totalTopics: number | null;
+    updatedAt: string;
+    visibility: 'private' | 'public';
+    workspaceId: string | null;
+};
+
+export type TaskDetail = {
+    activities?: Array<TaskDetailActivity>;
+    agentId?: string | null;
+    archivedAt?: string | null;
+    automationMode?: 'heartbeat' | 'schedule' | null;
+    checkpoint?: {
+        onAgentRequest?: boolean;
+        tasks?: {
+            afterIds?: Array<string>;
+            afterTasks?: Array<{
+                id: string;
+                identifier: string;
+            }>;
+            beforeIds?: Array<string>;
+            beforeTasks?: Array<{
+                id: string;
+                identifier: string;
+            }>;
+        };
+        topic?: {
+            after?: boolean;
+            before?: boolean;
+        };
+    };
+    config?: {
+        [key: string]: unknown;
+    };
+    createdAt?: string;
+    createdByUserId?: string | null;
+    dependencies?: Array<{
+        dependsOn: string;
+        dependsOnId?: string;
+        type: string;
+    }>;
+    description?: string | null;
+    editorData?: unknown;
+    error?: string | null;
+    files?: Array<{
+        content?: string;
+        downloadUrl?: string;
+        fileType: string;
+        id: string;
+        inaccessible?: boolean;
+        name: string;
+        originalCharCount?: number;
+        size: number;
+        url: string;
+    }>;
+    goal?: {
+        id: string;
+        title: string;
+    } | null;
+    heartbeat?: {
+        interval?: number | null;
+        lastAt?: string | null;
+        scheduledAt?: string | null;
+        timeout?: number | null;
+    };
+    id?: string;
+    identifier: string;
+    instruction: string;
+    labels?: Array<TaskLabelRef>;
+    name?: string | null;
+    parent?: {
+        agentId?: string | null;
+        id?: string;
+        identifier: string;
+        name: string | null;
+    } | null;
+    priority?: number | null;
+    projectId?: string | null;
+    schedule?: {
+        maxExecutions?: number | null;
+        pattern?: string | null;
+        timezone?: string | null;
+    };
+    startedAt?: string;
+    status: string;
+    subtasks?: Array<TaskDetailSubtask>;
+    topicCount?: number;
+    updatedAt?: string;
+    userId?: string | null;
+    verify?: {
+        enabled?: boolean;
+        maxIterations?: number;
+        requirement?: string;
+        verifierAgentId?: string;
+        verifyCriteriaIds?: Array<string>;
+        verifyRubricId?: string;
+    } | null;
+    visibility?: 'private' | 'public';
+    workspace?: Array<TaskDetailWorkspaceNode>;
+    workspaceId?: string | null;
+};
+
+export type TaskDetailActivity = {
+    actions?: unknown;
+    agent?: {
+        avatar: string | null;
+        backgroundColor: string | null;
+        id: string;
+        name?: string | null;
+        title: string | null;
+    } | null;
+    agentId?: string | null;
+    artifacts?: {
+        documents?: Array<{
+            id: string;
+            kind: string | null;
+            title: string | null;
+        }>;
+    } | null;
+    assignment?: {
+        from?: {
+            avatar?: string | null;
+            id: string;
+            name?: string | null;
+            type: 'agent' | 'user';
+            unresolved?: boolean;
+        } | null;
+        kind: 'agent' | 'member';
+        to?: {
+            avatar?: string | null;
+            id: string;
+            name?: string | null;
+            type: 'agent' | 'user';
+            unresolved?: boolean;
+        } | null;
+    };
+    author?: {
+        avatar?: string | null;
+        id: string;
+        name?: string | null;
+        type: 'agent' | 'user';
+        unresolved?: boolean;
+    };
+    briefType?: string;
+    completedAt?: string;
+    content?: string;
+    cost?: number | null;
+    createdAt?: string;
+    cronJobId?: string | null;
+    editorData?: unknown;
+    files?: Array<{
+        content?: string;
+        downloadUrl?: string;
+        fileType: string;
+        id: string;
+        inaccessible?: boolean;
+        name: string;
+        originalCharCount?: number;
+        size: number;
+        url: string;
+    }>;
+    id?: string;
+    operationId?: string | null;
+    priority?: string | null;
+    propertyChange?: {
+        field: 'automation';
+        from: {
+            heartbeatInterval: number | null;
+            maxExecutions: number | null;
+            mode: 'heartbeat' | 'schedule' | null;
+            schedulePattern: string | null;
+            scheduleTimezone: string | null;
+        } | null;
+        to: {
+            heartbeatInterval: number | null;
+            maxExecutions: number | null;
+            mode: 'heartbeat' | 'schedule' | null;
+            schedulePattern: string | null;
+            scheduleTimezone: string | null;
+        } | null;
+    } | {
+        field: 'priority';
+        from: number | null;
+        to: number | null;
+    } | {
+        field: 'status';
+        from: 'backlog' | 'running' | 'scheduled' | 'paused' | 'completed' | 'failed' | 'canceled' | null;
+        to: 'backlog' | 'running' | 'scheduled' | 'paused' | 'completed' | 'failed' | 'canceled';
+    };
+    readAt?: string | null;
+    resolvedAction?: string | null;
+    resolvedAt?: string | null;
+    resolvedComment?: string | null;
+    runningOperation?: {
+        assistantMessageId: string;
+        heteroType?: string | null;
+        operationId: string;
+        scope?: string;
+        threadId?: string | null;
+    } | null;
+    seq?: number | null;
+    sourceTaskId?: string | null;
+    sourceTaskIdentifier?: string | null;
+    sourceTaskName?: string | null;
+    status?: string | null;
+    summary?: string;
+    taskId?: string | null;
+    time?: string;
+    title?: string;
+    topicId?: string | null;
+    trigger?: 'manual' | 'schedule' | 'heartbeat' | 'goal' | null;
+    type: 'assignment' | 'brief' | 'comment' | 'created' | 'property' | 'topic';
+    userId?: string | null;
+    verify?: {
+        acceptanceId: string | null;
+        passed: number;
+        roundIndex: number | null;
+        runId: string;
+        status: string | null;
+        total: number;
+    } | null;
+};
+
+export type TaskDetailSubtask = {
+    archivedAt?: string | null;
+    assignee?: {
+        avatar: string | null;
+        backgroundColor: string | null;
+        id: string;
+        title: string | null;
+    } | null;
+    assigneeUserId?: string | null;
+    automationMode?: 'heartbeat' | 'schedule' | null;
+    blockedBy?: string;
+    blockedById?: string;
+    children?: Array<TaskDetailSubtask>;
+    createdByUserId?: string;
+    heartbeat?: {
+        interval?: number | null;
+    };
+    id?: string;
+    identifier: string;
+    name?: string | null;
+    priority?: number | null;
+    runningTopic?: {
+        id: string;
+        operationId?: string | null;
+    } | null;
+    schedule?: {
+        pattern?: string | null;
+        timezone?: string | null;
+    };
+    status: string;
+    updatedAt?: string;
+    visibility?: 'private' | 'public';
+};
+
+export type TaskDetailWorkspaceNode = {
+    children?: Array<TaskDetailWorkspaceNode>;
+    createdAt?: string;
+    documentId: string;
+    fileType?: string;
+    inaccessible?: boolean;
+    size?: number | null;
+    sourceTaskId?: string;
+    sourceTaskIdentifier?: string | null;
+    title?: string;
+};
+
+export type TaskStatusUpdateResult = {
+    allSubtasksDone?: boolean;
+    checkpointTriggered?: boolean;
+    completionDeferred?: boolean;
+    parentTaskId?: string | null;
+    paused: Array<string>;
+    pausedTasks?: Array<{
+        id: string;
+        identifier: string;
+    }>;
+    skippedRunning?: boolean;
+    task: Task;
+    unlocked: Array<string>;
+    unlockedTasks?: Array<{
+        id: string;
+        identifier: string;
+    }>;
+};
+
+export type TaskRunStarted = {
+    agentId: string;
+    assistantMessageId: string;
+    autoStarted: boolean;
+    createdAt: string;
+    createdThreadId?: string;
+    error?: string;
+    errorData?: {
+        code: 'DEVICE_NOT_FOUND';
+        deviceId: string;
+        retryable: true;
+        scope: 'personal' | 'workspace';
+        workspaceId?: string;
+    };
+    groupMemberContinuation?: boolean;
+    heteroType?: string | null;
+    memberOperationId?: string;
+    message: string;
+    messageId?: string;
+    operationId: string;
+    status: string;
+    success: boolean;
+    supervisorOperationId?: string;
+    taskId: string;
+    taskIdentifier: string;
+    terminalReported?: boolean;
+    timestamp: string;
+    token?: string;
+    topicId: string;
+    userMessageId: string;
+};
+
+export type TaskRun = {
+    agentId: string | null;
+    completedAt: string | null;
+    content: string | null;
+    createdAt: string;
+    keyFindings: Array<string>;
+    nextAction: string | null;
+    notable: boolean | null;
+    seq: number;
+    status: string;
+    summary: string | null;
+    title: string | null;
+    topicId: string | null;
+    trigger: 'manual' | 'schedule' | 'heartbeat' | 'goal' | null;
+};
+
+export type Topic = {
+    agentId: string | null;
+    completedAt: string | null;
+    content: string | null;
+    cost: {
+        [key: string]: unknown;
+    } | null;
+    createdAt: string;
+    description: string | null;
+    favorite: boolean | null;
+    groupId: string | null;
+    historySummary: string | null;
+    id: string;
+    metadata: {
+        [key: string]: unknown;
+    } | null;
+    mode: string | null;
+    model: string | null;
+    provider: string | null;
+    sessionId: string | null;
+    status: 'active' | 'running' | 'waitingForHuman' | 'scheduled' | 'failed' | 'completed' | 'archived' | 'unread' | null;
+    title: string | null;
+    totalCost: number | null;
+    totalInputTokens: number | null;
+    totalOutputTokens: number | null;
+    totalTokens: number | null;
+    trigger: string | null;
+    updatedAt: string;
+    usage: {
+        [key: string]: unknown;
+    } | null;
+    messageCount: number;
+    user: {
+        avatar: string | null;
+        createdAt: string;
+        email: string | null;
+        firstName: string | null;
+        fullName: string | null;
+        id: string;
+        isOnboarded: boolean | null;
+        lastName: string | null;
+        phone: string | null;
+        updatedAt: string;
+        username: string | null;
+    };
+};
+
+export type TopicThread = {
+    createdAt: string;
+    id: string;
+    parentThreadId: string | null;
+    status: 'active' | 'processing' | 'pending' | 'inReview' | 'todo' | 'cancel' | 'completed' | 'failed' | null;
+    title: string | null;
+    topicId: string;
+    type: 'continuation' | 'standalone' | 'isolation' | 'eval';
+    updatedAt: string;
 };
 
 export type User = {
-    avatar?: string | null;
+    avatar: string | null;
     createdAt: string;
-    email?: string | null;
-    firstName?: string | null;
-    fullName?: string | null;
+    email: string | null;
+    firstName: string | null;
+    fullName: string | null;
     id: string;
-    isOnboarded?: boolean | null;
-    lastName?: string | null;
-    phone?: string | null;
+    isOnboarded: boolean | null;
+    lastName: string | null;
+    messageCount?: number;
+    phone: string | null;
+    roles: Array<Role>;
     updatedAt: string;
-    username?: string | null;
-    [key: string]: unknown;
+    username: string | null;
+};
+
+export type UserIdentity = {
+    id: string;
+};
+
+export type UserList = {
+    hasMore: PageHasMore;
+    nextCursor: PageNextCursor;
+    total: PageTotal;
+    users: Array<User>;
+};
+
+export type UserRole = {
+    expiresAt: string | null;
+    roleDisplayName: string;
+    roleId: string;
+    roleName: string;
 };
 
 export type Usage = {
@@ -378,45 +2682,17 @@ export type Usage = {
     }>;
 };
 
+/**
+ * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+ */
+export type IdempotencyKey = string;
+
 export type GetApiV1HealthData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/api/v1/health';
 };
-
-export type GetApiV1HealthErrors = {
-    /**
-     * Invalid request
-     */
-    400: ApiError;
-    /**
-     * Authentication required
-     */
-    401: ApiError;
-    /**
-     * Insufficient permission
-     */
-    403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
-    /**
-     * Rate limit exceeded
-     */
-    429: ApiError;
-    /**
-     * Internal server error
-     */
-    500: ApiError;
-};
-
-export type GetApiV1HealthError = GetApiV1HealthErrors[keyof GetApiV1HealthErrors];
 
 export type GetApiV1HealthResponses = {
     /**
@@ -434,7 +2710,22 @@ export type GetApiV1HealthResponse = GetApiV1HealthResponses[keyof GetApiV1Healt
 export type GetApiV1AgentGroupsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
+        /**
+         * Deprecated: `array` returns the pre-pagination bare array of every item instead of the paginated object. Migrate to `items` + `nextCursor`.
+         *
+         * @deprecated
+         */
+        format?: 'array';
+    };
     url: '/api/v1/agent-groups';
 };
 
@@ -452,14 +2743,6 @@ export type GetApiV1AgentGroupsErrors = {
      */
     403: ApiError;
     /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
-    /**
      * Rate limit exceeded
      */
     429: ApiError;
@@ -476,7 +2759,12 @@ export type GetApiV1AgentGroupsResponses = {
      * Successful response
      */
     200: {
-        data?: Array<AgentGroup>;
+        data: {
+            items: Array<AgentGroup>;
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
+            total: PageTotal;
+        };
         message?: string;
         success: true;
         timestamp: string;
@@ -490,6 +2778,12 @@ export type PostApiV1AgentGroupsData = {
         name: string;
         sort?: number | null;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/agent-groups';
@@ -497,13 +2791,9 @@ export type PostApiV1AgentGroupsData = {
 
 export type PostApiV1AgentGroupsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -512,14 +2802,6 @@ export type PostApiV1AgentGroupsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -537,9 +2819,7 @@ export type PostApiV1AgentGroupsResponses = {
      * Successful response
      */
     201: {
-        data?: {
-            id: string;
-        };
+        data: CreatedAgentGroup;
         message?: string;
         success: true;
         timestamp: string;
@@ -559,13 +2839,9 @@ export type DeleteApiV1AgentGroupsByIdData = {
 
 export type DeleteApiV1AgentGroupsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -574,14 +2850,6 @@ export type DeleteApiV1AgentGroupsByIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -599,9 +2867,7 @@ export type DeleteApiV1AgentGroupsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -621,13 +2887,9 @@ export type GetApiV1AgentGroupsByIdData = {
 
 export type GetApiV1AgentGroupsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -640,10 +2902,6 @@ export type GetApiV1AgentGroupsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -661,7 +2919,7 @@ export type GetApiV1AgentGroupsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: AgentGroup;
+        data: AgentGroup;
         message?: string;
         success: true;
         timestamp: string;
@@ -684,13 +2942,9 @@ export type PatchApiV1AgentGroupsByIdData = {
 
 export type PatchApiV1AgentGroupsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -699,14 +2953,6 @@ export type PatchApiV1AgentGroupsByIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -724,7 +2970,7 @@ export type PatchApiV1AgentGroupsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: AgentGroup;
+        data: AgentGroup;
         message?: string;
         success: true;
         timestamp: string;
@@ -737,9 +2983,27 @@ export type GetApiV1AgentsData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
         personal?: 'true' | 'false';
     };
     url: '/api/v1/agents';
@@ -747,13 +3011,9 @@ export type GetApiV1AgentsData = {
 
 export type GetApiV1AgentsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -762,14 +3022,6 @@ export type GetApiV1AgentsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -787,11 +3039,7 @@ export type GetApiV1AgentsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            agents: Array<Agent>;
-            total?: number;
-            [key: string]: unknown;
-        };
+        data: AgentList;
         message?: string;
         success: true;
         timestamp: string;
@@ -883,6 +3131,12 @@ export type PostApiV1AgentsData = {
         systemRole?: string | null;
         title: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/agents';
@@ -890,13 +3144,9 @@ export type PostApiV1AgentsData = {
 
 export type PostApiV1AgentsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -905,14 +3155,6 @@ export type PostApiV1AgentsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -930,7 +3172,7 @@ export type PostApiV1AgentsResponses = {
      * Successful response
      */
     200: {
-        data?: Agent;
+        data: Agent;
         message?: string;
         success: true;
         timestamp: string;
@@ -950,13 +3192,9 @@ export type DeleteApiV1AgentsByIdData = {
 
 export type DeleteApiV1AgentsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -965,14 +3203,6 @@ export type DeleteApiV1AgentsByIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -990,9 +3220,7 @@ export type DeleteApiV1AgentsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -1012,13 +3240,9 @@ export type GetApiV1AgentsByIdData = {
 
 export type GetApiV1AgentsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1031,10 +3255,6 @@ export type GetApiV1AgentsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1052,7 +3272,7 @@ export type GetApiV1AgentsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Agent;
+        data: AgentDetail;
         message?: string;
         success: true;
         timestamp: string;
@@ -1153,13 +3373,9 @@ export type PatchApiV1AgentsByIdData = {
 
 export type PatchApiV1AgentsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1168,14 +3384,6 @@ export type PatchApiV1AgentsByIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1193,7 +3401,7 @@ export type PatchApiV1AgentsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Agent;
+        data: Agent;
         message?: string;
         success: true;
         timestamp: string;
@@ -1206,6 +3414,12 @@ export type PostApiV1AgentsByIdDuplicateData = {
     body: {
         title?: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -1215,13 +3429,9 @@ export type PostApiV1AgentsByIdDuplicateData = {
 
 export type PostApiV1AgentsByIdDuplicateErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1234,10 +3444,6 @@ export type PostApiV1AgentsByIdDuplicateErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1255,9 +3461,7 @@ export type PostApiV1AgentsByIdDuplicateResponses = {
      * Successful response
      */
     201: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: AgentDetail;
         message?: string;
         success: true;
         timestamp: string;
@@ -1280,13 +3484,9 @@ export type GetApiV1AgentsByIdAccountsData = {
 
 export type GetApiV1AgentsByIdAccountsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1299,10 +3499,6 @@ export type GetApiV1AgentsByIdAccountsErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1320,10 +3516,7 @@ export type GetApiV1AgentsByIdAccountsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            accounts: Array<AgentAccount>;
-            total: number;
-        };
+        data: AgentAccountList;
         message?: string;
         success: true;
         timestamp: string;
@@ -1351,6 +3544,12 @@ export type PostApiV1AgentsByIdAccountsData = {
         displayName?: string;
         provider: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -1360,13 +3559,9 @@ export type PostApiV1AgentsByIdAccountsData = {
 
 export type PostApiV1AgentsByIdAccountsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1400,7 +3595,7 @@ export type PostApiV1AgentsByIdAccountsResponses = {
      * Successful response
      */
     201: {
-        data?: AgentAccount;
+        data: AgentAccount;
         message?: string;
         success: true;
         timestamp: string;
@@ -1424,13 +3619,9 @@ export type DeleteApiV1AgentsByIdAccountsByAccountIdData = {
 
 export type DeleteApiV1AgentsByIdAccountsByAccountIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1443,10 +3634,6 @@ export type DeleteApiV1AgentsByIdAccountsByAccountIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1464,7 +3651,7 @@ export type DeleteApiV1AgentsByIdAccountsByAccountIdResponses = {
      * Successful response
      */
     200: {
-        data?: AgentAccount;
+        data: AgentAccount;
         message?: string;
         success: true;
         timestamp: string;
@@ -1485,13 +3672,9 @@ export type GetApiV1AgentsByIdAccountsByAccountIdData = {
 
 export type GetApiV1AgentsByIdAccountsByAccountIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1504,10 +3687,6 @@ export type GetApiV1AgentsByIdAccountsByAccountIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1525,7 +3704,7 @@ export type GetApiV1AgentsByIdAccountsByAccountIdResponses = {
      * Successful response
      */
     200: {
-        data?: AgentAccount;
+        data: AgentAccount;
         message?: string;
         success: true;
         timestamp: string;
@@ -1557,13 +3736,9 @@ export type PatchApiV1AgentsByIdAccountsByAccountIdData = {
 
 export type PatchApiV1AgentsByIdAccountsByAccountIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1597,7 +3772,7 @@ export type PatchApiV1AgentsByIdAccountsByAccountIdResponses = {
      * Successful response
      */
     200: {
-        data?: AgentAccount;
+        data: AgentAccount;
         message?: string;
         success: true;
         timestamp: string;
@@ -1627,13 +3802,9 @@ export type PutApiV1AgentsByIdAccountsByAccountIdCredentialData = {
 
 export type PutApiV1AgentsByIdAccountsByAccountIdCredentialErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1646,10 +3817,6 @@ export type PutApiV1AgentsByIdAccountsByAccountIdCredentialErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1667,7 +3834,7 @@ export type PutApiV1AgentsByIdAccountsByAccountIdCredentialResponses = {
      * Successful response
      */
     200: {
-        data?: AgentAccount;
+        data: AgentAccount;
         message?: string;
         success: true;
         timestamp: string;
@@ -1679,7 +3846,22 @@ export type PutApiV1AgentsByIdAccountsByAccountIdCredentialResponse = PutApiV1Ag
 export type GetApiV1ApiKeysData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
+        /**
+         * Deprecated: `array` returns the pre-pagination bare array of every item instead of the paginated object. Migrate to `items` + `nextCursor`.
+         *
+         * @deprecated
+         */
+        format?: 'array';
+    };
     url: '/api/v1/api-keys';
 };
 
@@ -1697,14 +3879,6 @@ export type GetApiV1ApiKeysErrors = {
      */
     403: ApiError;
     /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
-    /**
      * Rate limit exceeded
      */
     429: ApiError;
@@ -1721,7 +3895,12 @@ export type GetApiV1ApiKeysResponses = {
      * Successful response
      */
     200: {
-        data?: Array<ApiKey>;
+        data: {
+            items: Array<ApiKey>;
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
+            total: PageTotal;
+        };
         message?: string;
         success: true;
         timestamp: string;
@@ -1736,6 +3915,12 @@ export type PostApiV1ApiKeysData = {
         name: string;
         scopes?: Array<'*' | 'agent:read' | 'agent:write' | 'agent:credential:write' | 'eval:read' | 'eval:write' | 'chat:read' | 'chat:write' | 'model:invoke' | 'model:read' | 'model:write' | 'file:read' | 'file:write' | 'knowledge:read' | 'knowledge:write' | 'mcp:read' | 'mcp:write' | 'usage:read' | 'workspace:read' | 'workspace:write' | 'user:read' | 'user:write'> | null;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/api-keys';
@@ -1743,13 +3928,9 @@ export type PostApiV1ApiKeysData = {
 
 export type PostApiV1ApiKeysErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1758,14 +3939,6 @@ export type PostApiV1ApiKeysErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1783,17 +3956,7 @@ export type PostApiV1ApiKeysResponses = {
      * Successful response
      */
     201: {
-        data?: {
-            createdAt: string;
-            enabled?: boolean | null;
-            expiresAt?: string | null;
-            id: string;
-            lastUsedAt?: string | null;
-            name: string;
-            scopes?: Array<'*' | 'agent:read' | 'agent:write' | 'agent:credential:write' | 'eval:read' | 'eval:write' | 'chat:read' | 'chat:write' | 'model:invoke' | 'model:read' | 'model:write' | 'file:read' | 'file:write' | 'knowledge:read' | 'knowledge:write' | 'mcp:read' | 'mcp:write' | 'usage:read' | 'workspace:read' | 'workspace:write' | 'user:read' | 'user:write'> | null;
-            updatedAt: string;
-            key: string;
-        };
+        data: CreatedApiKey;
         message?: string;
         success: true;
         timestamp: string;
@@ -1813,13 +3976,9 @@ export type DeleteApiV1ApiKeysByIdData = {
 
 export type DeleteApiV1ApiKeysByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1832,10 +3991,6 @@ export type DeleteApiV1ApiKeysByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1853,9 +4008,7 @@ export type DeleteApiV1ApiKeysByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -1875,13 +4028,9 @@ export type GetApiV1ApiKeysByIdData = {
 
 export type GetApiV1ApiKeysByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1894,10 +4043,6 @@ export type GetApiV1ApiKeysByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1915,7 +4060,7 @@ export type GetApiV1ApiKeysByIdResponses = {
      * Successful response
      */
     200: {
-        data?: ApiKey;
+        data: ApiKey;
         message?: string;
         success: true;
         timestamp: string;
@@ -1939,13 +4084,9 @@ export type PatchApiV1ApiKeysByIdData = {
 
 export type PatchApiV1ApiKeysByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -1958,10 +4099,6 @@ export type PatchApiV1ApiKeysByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -1979,7 +4116,7 @@ export type PatchApiV1ApiKeysByIdResponses = {
      * Successful response
      */
     200: {
-        data?: ApiKey;
+        data: ApiKey;
         message?: string;
         success: true;
         timestamp: string;
@@ -1987,6 +4124,96 @@ export type PatchApiV1ApiKeysByIdResponses = {
 };
 
 export type PatchApiV1ApiKeysByIdResponse = PatchApiV1ApiKeysByIdResponses[keyof PatchApiV1ApiKeysByIdResponses];
+
+export type PostApiV1AudioSpeechData = {
+    body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/audio/speech';
+};
+
+export type PostApiV1AudioSpeechErrors = {
+    /**
+     * Invalid request, unsupported format or invalid params
+     */
+    400: {
+        error: {
+            code?: string | null;
+            message: string;
+            param?: string | null;
+            type: string;
+        };
+    };
+    /**
+     * Authentication required
+     */
+    401: ApiError;
+    /**
+     * Insufficient balance
+     */
+    402: {
+        error: {
+            code?: string | null;
+            message: string;
+            param?: string | null;
+            type: string;
+        };
+    };
+    /**
+     * Insufficient permission
+     */
+    403: ApiError;
+    /**
+     * Upstream provider rate limit
+     */
+    429: {
+        error: {
+            code?: string | null;
+            message: string;
+            param?: string | null;
+            type: string;
+        };
+    };
+    /**
+     * Text-to-speech failed
+     */
+    500: {
+        error: {
+            code?: string | null;
+            message: string;
+            param?: string | null;
+            type: string;
+        };
+    };
+    /**
+     * Upstream provider error
+     */
+    502: {
+        error: {
+            code?: string | null;
+            message: string;
+            param?: string | null;
+            type: string;
+        };
+    };
+};
+
+export type PostApiV1AudioSpeechError = PostApiV1AudioSpeechErrors[keyof PostApiV1AudioSpeechErrors];
+
+export type PostApiV1AudioSpeechResponses = {
+    /**
+     * Synthesized audio
+     */
+    200: Blob | File;
+};
+
+export type PostApiV1AudioSpeechResponse = PostApiV1AudioSpeechResponses[keyof PostApiV1AudioSpeechResponses];
 
 export type PostApiV1ChatData = {
     body: {
@@ -2003,6 +4230,12 @@ export type PostApiV1ChatData = {
         temperature?: number | null;
         top_p?: number;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/chat';
@@ -2010,13 +4243,9 @@ export type PostApiV1ChatData = {
 
 export type PostApiV1ChatErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2025,14 +4254,6 @@ export type PostApiV1ChatErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -2050,7 +4271,7 @@ export type PostApiV1ChatResponses = {
      * Successful response
      */
     200: {
-        data?: ChatResponse;
+        data: ChatResponse;
         message?: string;
         success: true;
         timestamp: string;
@@ -2067,6 +4288,12 @@ export type PostApiV1ChatTranslateData = {
         text: string;
         to: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/chat/translate';
@@ -2074,13 +4301,9 @@ export type PostApiV1ChatTranslateData = {
 
 export type PostApiV1ChatTranslateErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2089,14 +4312,6 @@ export type PostApiV1ChatTranslateErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -2114,9 +4329,7 @@ export type PostApiV1ChatTranslateResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            translatedText: string;
-        };
+        data: ChatTranslateResponse;
         message?: string;
         success: true;
         timestamp: string;
@@ -2153,6 +4366,12 @@ export type PostApiV1ChatGenerateReplyData = {
         sessionId: string | null;
         userMessage: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/chat/generate-reply';
@@ -2160,13 +4379,9 @@ export type PostApiV1ChatGenerateReplyData = {
 
 export type PostApiV1ChatGenerateReplyErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2175,14 +4390,6 @@ export type PostApiV1ChatGenerateReplyErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -2200,9 +4407,7 @@ export type PostApiV1ChatGenerateReplyResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            reply: string;
-        };
+        data: ChatGenerateReplyResponse;
         message?: string;
         success: true;
         timestamp: string;
@@ -2215,8 +4420,26 @@ export type GetApiV1ChatGroupsData = {
     body?: never;
     path?: never;
     query?: {
-        page?: string;
-        pageSize?: string;
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
         personal?: 'true' | 'false';
     };
     url: '/api/v1/chat-groups';
@@ -2224,13 +4447,9 @@ export type GetApiV1ChatGroupsData = {
 
 export type GetApiV1ChatGroupsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2239,14 +4458,6 @@ export type GetApiV1ChatGroupsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -2264,11 +4475,7 @@ export type GetApiV1ChatGroupsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            chatGroups: Array<ChatGroup>;
-            total?: number;
-            [key: string]: unknown;
-        };
+        data: ChatGroupList;
         message?: string;
         success: true;
         timestamp: string;
@@ -2289,6 +4496,12 @@ export type PostApiV1ChatGroupsData = {
         personal?: boolean;
         title: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/chat-groups';
@@ -2296,13 +4509,9 @@ export type PostApiV1ChatGroupsData = {
 
 export type PostApiV1ChatGroupsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2336,7 +4545,7 @@ export type PostApiV1ChatGroupsResponses = {
      * Successful response
      */
     201: {
-        data?: ChatGroup;
+        data: ChatGroup;
         message?: string;
         success: true;
         timestamp: string;
@@ -2356,13 +4565,9 @@ export type DeleteApiV1ChatGroupsByIdData = {
 
 export type DeleteApiV1ChatGroupsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2375,10 +4580,6 @@ export type DeleteApiV1ChatGroupsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -2396,9 +4597,7 @@ export type DeleteApiV1ChatGroupsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -2418,13 +4617,9 @@ export type GetApiV1ChatGroupsByIdData = {
 
 export type GetApiV1ChatGroupsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2437,10 +4632,6 @@ export type GetApiV1ChatGroupsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -2458,7 +4649,7 @@ export type GetApiV1ChatGroupsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: ChatGroup;
+        data: ChatGroup;
         message?: string;
         success: true;
         timestamp: string;
@@ -2485,13 +4676,9 @@ export type PatchApiV1ChatGroupsByIdData = {
 
 export type PatchApiV1ChatGroupsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2525,7 +4712,7 @@ export type PatchApiV1ChatGroupsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: ChatGroup;
+        data: ChatGroup;
         message?: string;
         success: true;
         timestamp: string;
@@ -2547,13 +4734,9 @@ export type DeleteApiV1ChatGroupsByIdMembersData = {
 
 export type DeleteApiV1ChatGroupsByIdMembersErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2587,7 +4770,7 @@ export type DeleteApiV1ChatGroupsByIdMembersResponses = {
      * Successful response
      */
     200: {
-        data?: ChatGroup;
+        data: ChatGroup;
         message?: string;
         success: true;
         timestamp: string;
@@ -2600,6 +4783,12 @@ export type PostApiV1ChatGroupsByIdMembersData = {
     body: {
         agentIds: Array<string>;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -2609,13 +4798,9 @@ export type PostApiV1ChatGroupsByIdMembersData = {
 
 export type PostApiV1ChatGroupsByIdMembersErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2628,10 +4813,6 @@ export type PostApiV1ChatGroupsByIdMembersErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -2649,7 +4830,7 @@ export type PostApiV1ChatGroupsByIdMembersResponses = {
      * Successful response
      */
     200: {
-        data?: ChatGroup;
+        data: ChatGroup;
         message?: string;
         success: true;
         timestamp: string;
@@ -2658,30 +4839,102 @@ export type PostApiV1ChatGroupsByIdMembersResponses = {
 
 export type PostApiV1ChatGroupsByIdMembersResponse = PostApiV1ChatGroupsByIdMembersResponses[keyof PostApiV1ChatGroupsByIdMembersResponses];
 
-export type GetApiV1EvalRunsData = {
+export type GetApiV1DocumentsData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
-        offset?: number;
-        page?: number;
-        pageSize?: number;
-        experimentId?: string;
-        datasetId?: string;
-        status?: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'aborted' | 'external';
+        /**
+         * Only list the direct children of this folder (id or slug).
+         */
+        parentId?: string;
     };
-    url: '/api/v1/eval/runs';
+    url: '/api/v1/documents';
 };
 
-export type GetApiV1EvalRunsErrors = {
+export type GetApiV1DocumentsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
+    400: ApiError;
+    /**
+     * Authentication required
+     */
+    401: ApiError;
+    /**
+     * Insufficient permission
+     */
+    403: ApiError;
+    /**
+     * Rate limit exceeded
+     */
+    429: ApiError;
+    /**
+     * Internal server error
+     */
+    500: ApiError;
+};
+
+export type GetApiV1DocumentsError = GetApiV1DocumentsErrors[keyof GetApiV1DocumentsErrors];
+
+export type GetApiV1DocumentsResponses = {
+    /**
+     * Successful response
+     */
+    200: {
+        data: {
+            items: Array<DocumentSummary>;
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
+            total: PageTotal;
+        };
+        message?: string;
+        success: true;
+        timestamp: string;
     };
+};
+
+export type GetApiV1DocumentsResponse = GetApiV1DocumentsResponses[keyof GetApiV1DocumentsResponses];
+
+export type PostApiV1DocumentsData = {
+    body: {
+        /**
+         * Markdown body. Omit for a folder.
+         */
+        content?: string;
+        /**
+         * `custom/folder` creates a folder; defaults to a page (`custom/document`).
+         */
+        fileType?: string;
+        /**
+         * Folder to create in (id or slug).
+         */
+        parentId?: string;
+        title: string;
+    };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/documents';
+};
+
+export type PostApiV1DocumentsErrors = {
+    /**
+     * Invalid request
+     */
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2695,9 +4948,191 @@ export type GetApiV1EvalRunsErrors = {
      */
     404: ApiError;
     /**
-     * Resource conflict
+     * Rate limit exceeded
      */
-    409: ApiError;
+    429: ApiError;
+    /**
+     * Internal server error
+     */
+    500: ApiError;
+};
+
+export type PostApiV1DocumentsError = PostApiV1DocumentsErrors[keyof PostApiV1DocumentsErrors];
+
+export type PostApiV1DocumentsResponses = {
+    /**
+     * Successful response
+     */
+    201: {
+        data: Document;
+        message?: string;
+        success: true;
+        timestamp: string;
+    };
+};
+
+export type PostApiV1DocumentsResponse = PostApiV1DocumentsResponses[keyof PostApiV1DocumentsResponses];
+
+export type GetApiV1DocumentsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/documents/{id}';
+};
+
+export type GetApiV1DocumentsByIdErrors = {
+    /**
+     * Invalid request
+     */
+    400: ApiError;
+    /**
+     * Authentication required
+     */
+    401: ApiError;
+    /**
+     * Insufficient permission
+     */
+    403: ApiError;
+    /**
+     * Resource not found
+     */
+    404: ApiError;
+    /**
+     * Rate limit exceeded
+     */
+    429: ApiError;
+    /**
+     * Internal server error
+     */
+    500: ApiError;
+};
+
+export type GetApiV1DocumentsByIdError = GetApiV1DocumentsByIdErrors[keyof GetApiV1DocumentsByIdErrors];
+
+export type GetApiV1DocumentsByIdResponses = {
+    /**
+     * Successful response
+     */
+    200: {
+        data: Document;
+        message?: string;
+        success: true;
+        timestamp: string;
+    };
+};
+
+export type GetApiV1DocumentsByIdResponse = GetApiV1DocumentsByIdResponses[keyof GetApiV1DocumentsByIdResponses];
+
+export type PatchApiV1DocumentsByIdData = {
+    body: {
+        /**
+         * Markdown body; replaces the whole body.
+         */
+        content?: string;
+        title?: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/documents/{id}';
+};
+
+export type PatchApiV1DocumentsByIdErrors = {
+    /**
+     * Invalid request
+     */
+    400: ApiError;
+    /**
+     * Authentication required
+     */
+    401: ApiError;
+    /**
+     * Insufficient permission
+     */
+    403: ApiError;
+    /**
+     * Resource not found
+     */
+    404: ApiError;
+    /**
+     * Rate limit exceeded
+     */
+    429: ApiError;
+    /**
+     * Internal server error
+     */
+    500: ApiError;
+};
+
+export type PatchApiV1DocumentsByIdError = PatchApiV1DocumentsByIdErrors[keyof PatchApiV1DocumentsByIdErrors];
+
+export type PatchApiV1DocumentsByIdResponses = {
+    /**
+     * Successful response
+     */
+    200: {
+        data: Document;
+        message?: string;
+        success: true;
+        timestamp: string;
+    };
+};
+
+export type PatchApiV1DocumentsByIdResponse = PatchApiV1DocumentsByIdResponses[keyof PatchApiV1DocumentsByIdResponses];
+
+export type GetApiV1EvalRunsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        offset?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
+        experimentId?: string;
+        datasetId?: string;
+        status?: 'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'aborted' | 'external';
+    };
+    url: '/api/v1/eval/runs';
+};
+
+export type GetApiV1EvalRunsErrors = {
+    /**
+     * Invalid request
+     */
+    400: ApiError;
+    /**
+     * Authentication required
+     */
+    401: ApiError;
+    /**
+     * Insufficient permission
+     */
+    403: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -2715,27 +5150,11 @@ export type GetApiV1EvalRunsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            runs: Array<{
-                id: string;
-                createdAt: string;
-                updatedAt: string;
-                config: {
-                    [key: string]: unknown;
-                };
-                executionMode: 'internal' | 'external';
-                datasetId: string;
-                experimentId: string | null;
-                parentRunId: string | null;
-                status: 'idle' | 'pending' | 'running' | 'external' | 'completed' | 'failed' | 'aborted';
-                targetAgentId: string | null;
-                name: string | null;
-                metrics: {
-                    [key: string]: unknown;
-                } | null;
-                startedAt: string | null;
-            }>;
-            total: number;
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
+            runs: Array<EvalRun>;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -2766,6 +5185,12 @@ export type PostApiV1EvalRunsData = {
         name?: string;
         targetAgentId: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/eval/runs';
@@ -2773,13 +5198,9 @@ export type PostApiV1EvalRunsData = {
 
 export type PostApiV1EvalRunsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2813,25 +5234,7 @@ export type PostApiV1EvalRunsResponses = {
      * Successful response
      */
     202: {
-        data?: {
-            id: string;
-            createdAt: string;
-            updatedAt: string;
-            config: {
-                [key: string]: unknown;
-            };
-            executionMode: 'internal' | 'external';
-            datasetId: string;
-            experimentId: string | null;
-            parentRunId: string | null;
-            status: 'idle' | 'pending' | 'running' | 'external' | 'completed' | 'failed' | 'aborted';
-            targetAgentId: string | null;
-            name: string | null;
-            metrics: {
-                [key: string]: unknown;
-            } | null;
-            startedAt: string | null;
-        };
+        data: EvalRun;
         message?: string;
         success: true;
         timestamp: string;
@@ -2846,9 +5249,31 @@ export type GetApiV1EvalRunsByIdTopicsData = {
         id: string;
     };
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         offset?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
         pageSize?: number;
     };
     url: '/api/v1/eval/runs/{id}/topics';
@@ -2856,13 +5281,9 @@ export type GetApiV1EvalRunsByIdTopicsData = {
 
 export type GetApiV1EvalRunsByIdTopicsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2875,10 +5296,6 @@ export type GetApiV1EvalRunsByIdTopicsErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -2896,22 +5313,12 @@ export type GetApiV1EvalRunsByIdTopicsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            topics: Array<{
-                createdAt: string;
-                evalResult: {
-                    [key: string]: unknown;
-                } | null;
-                passed: boolean | null;
-                runId: string;
-                score: number | null;
-                status: string | null;
-                testCaseId: string;
-                topicId: string;
-                input: string;
-            }>;
-            total: number;
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
             runId: string;
+            topics: Array<EvalRunTopic>;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -2932,13 +5339,9 @@ export type GetApiV1EvalRunsByIdData = {
 
 export type GetApiV1EvalRunsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -2951,10 +5354,6 @@ export type GetApiV1EvalRunsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -2972,25 +5371,7 @@ export type GetApiV1EvalRunsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-            createdAt: string;
-            updatedAt: string;
-            config: {
-                [key: string]: unknown;
-            };
-            executionMode: 'internal' | 'external';
-            datasetId: string;
-            experimentId: string | null;
-            parentRunId: string | null;
-            status: 'idle' | 'pending' | 'running' | 'external' | 'completed' | 'failed' | 'aborted';
-            targetAgentId: string | null;
-            name: string | null;
-            metrics: {
-                [key: string]: unknown;
-            } | null;
-            startedAt: string | null;
-        };
+        data: EvalRun;
         message?: string;
         success: true;
         timestamp: string;
@@ -3005,9 +5386,31 @@ export type GetApiV1EvalRunsByIdResultsData = {
         id: string;
     };
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         offset?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
         pageSize?: number;
     };
     url: '/api/v1/eval/runs/{id}/results';
@@ -3015,13 +5418,9 @@ export type GetApiV1EvalRunsByIdResultsData = {
 
 export type GetApiV1EvalRunsByIdResultsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -3034,10 +5433,6 @@ export type GetApiV1EvalRunsByIdResultsErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -3055,21 +5450,12 @@ export type GetApiV1EvalRunsByIdResultsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            results: Array<{
-                createdAt: string;
-                passed: boolean | null;
-                score: number | null;
-                status: string | null;
-                testCaseId: string;
-                topicId: string;
-                input: string;
-                result: {
-                    [key: string]: unknown;
-                } | null;
-            }>;
-            total: number;
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
+            results: Array<EvalRunResult>;
             runId: string;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -3092,6 +5478,12 @@ export type PostApiV1EvalRunsByIdResultsData = {
             topicId: string;
         }>;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -3101,13 +5493,9 @@ export type PostApiV1EvalRunsByIdResultsData = {
 
 export type PostApiV1EvalRunsByIdResultsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -3141,22 +5529,7 @@ export type PostApiV1EvalRunsByIdResultsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            items: Array<{
-                idempotent: boolean;
-                reportedThreads: number;
-                runId: string;
-                runStatus?: string;
-                success: boolean;
-                threadId?: string;
-                topicFinalized: boolean;
-                topicId: string;
-                totalThreads: number;
-            }>;
-            runId: string;
-            runStatus: string;
-            success: boolean;
-        };
+        data: EvalBatchReportResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -3169,9 +5542,31 @@ export type GetApiV1EvalBenchmarksData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         offset?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
         pageSize?: number;
     };
     url: '/api/v1/eval/benchmarks';
@@ -3179,13 +5574,9 @@ export type GetApiV1EvalBenchmarksData = {
 
 export type GetApiV1EvalBenchmarksErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -3194,14 +5585,6 @@ export type GetApiV1EvalBenchmarksErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -3219,85 +5602,11 @@ export type GetApiV1EvalBenchmarksResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            benchmarks: Array<{
-                id: string;
-                identifier: string;
-                name: string;
-                description: string | null;
-                metadata: {
-                    [key: string]: unknown;
-                } | null;
-                referenceUrl: string | null;
-                rubrics: Array<{
-                    id: string;
-                    name: string;
-                    type: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external';
-                    weight: number;
-                    threshold?: number;
-                    extractor?: {
-                        type: 'regex';
-                        pattern: string;
-                        group?: number;
-                    } | {
-                        type: 'delimiter';
-                        delimiter: string;
-                        position?: 'first' | 'last';
-                    } | {
-                        type: 'last-line';
-                        trim?: boolean;
-                    } | {
-                        type: 'choice-index';
-                        labels?: Array<string>;
-                        pattern?: string;
-                    };
-                    config: {
-                        value: string;
-                        threshold?: number;
-                    } | {
-                        value: number;
-                        tolerance?: number;
-                    } | {
-                        pattern: string;
-                    } | {
-                        code: string;
-                    } | {
-                        criteria: string;
-                        model?: string;
-                        provider?: string;
-                        systemRole?: string;
-                    } | {
-                        values: Array<string>;
-                        caseSensitive?: boolean;
-                    } | {
-                        schema: {
-                            [key: string]: unknown;
-                        };
-                    } | {
-                        extractor: {
-                            type: 'regex';
-                            pattern: string;
-                            group?: number;
-                        } | {
-                            type: 'delimiter';
-                            delimiter: string;
-                            position?: 'first' | 'last';
-                        } | {
-                            type: 'last-line';
-                            trim?: boolean;
-                        } | {
-                            type: 'choice-index';
-                            labels?: Array<string>;
-                            pattern?: string;
-                        };
-                        innerMatcher?: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external';
-                    };
-                }>;
-                createdAt: string;
-                updatedAt: string;
-                isSystem: boolean;
-            }>;
-            total: number;
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
+            benchmarks: Array<EvalBenchmark>;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -3382,6 +5691,12 @@ export type PostApiV1EvalBenchmarksData = {
             };
         }>;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/eval/benchmarks';
@@ -3389,13 +5704,9 @@ export type PostApiV1EvalBenchmarksData = {
 
 export type PostApiV1EvalBenchmarksErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -3404,10 +5715,6 @@ export type PostApiV1EvalBenchmarksErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
     /**
      * Resource conflict
      */
@@ -3429,83 +5736,7 @@ export type PostApiV1EvalBenchmarksResponses = {
      * Successful response
      */
     201: {
-        data?: {
-            id: string;
-            identifier: string;
-            name: string;
-            description: string | null;
-            metadata: {
-                [key: string]: unknown;
-            } | null;
-            referenceUrl: string | null;
-            rubrics: Array<{
-                id: string;
-                name: string;
-                type: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external';
-                weight: number;
-                threshold?: number;
-                extractor?: {
-                    type: 'regex';
-                    pattern: string;
-                    group?: number;
-                } | {
-                    type: 'delimiter';
-                    delimiter: string;
-                    position?: 'first' | 'last';
-                } | {
-                    type: 'last-line';
-                    trim?: boolean;
-                } | {
-                    type: 'choice-index';
-                    labels?: Array<string>;
-                    pattern?: string;
-                };
-                config: {
-                    value: string;
-                    threshold?: number;
-                } | {
-                    value: number;
-                    tolerance?: number;
-                } | {
-                    pattern: string;
-                } | {
-                    code: string;
-                } | {
-                    criteria: string;
-                    model?: string;
-                    provider?: string;
-                    systemRole?: string;
-                } | {
-                    values: Array<string>;
-                    caseSensitive?: boolean;
-                } | {
-                    schema: {
-                        [key: string]: unknown;
-                    };
-                } | {
-                    extractor: {
-                        type: 'regex';
-                        pattern: string;
-                        group?: number;
-                    } | {
-                        type: 'delimiter';
-                        delimiter: string;
-                        position?: 'first' | 'last';
-                    } | {
-                        type: 'last-line';
-                        trim?: boolean;
-                    } | {
-                        type: 'choice-index';
-                        labels?: Array<string>;
-                        pattern?: string;
-                    };
-                    innerMatcher?: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external';
-                };
-            }>;
-            createdAt: string;
-            updatedAt: string;
-            isSystem: boolean;
-        };
+        data: EvalBenchmark;
         message?: string;
         success: true;
         timestamp: string;
@@ -3525,13 +5756,9 @@ export type DeleteApiV1EvalBenchmarksByIdData = {
 
 export type DeleteApiV1EvalBenchmarksByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -3544,10 +5771,6 @@ export type DeleteApiV1EvalBenchmarksByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -3565,9 +5788,7 @@ export type DeleteApiV1EvalBenchmarksByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-        };
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -3587,13 +5808,9 @@ export type GetApiV1EvalBenchmarksByIdData = {
 
 export type GetApiV1EvalBenchmarksByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -3606,10 +5823,6 @@ export type GetApiV1EvalBenchmarksByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -3627,83 +5840,7 @@ export type GetApiV1EvalBenchmarksByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-            identifier: string;
-            name: string;
-            description: string | null;
-            metadata: {
-                [key: string]: unknown;
-            } | null;
-            referenceUrl: string | null;
-            rubrics: Array<{
-                id: string;
-                name: string;
-                type: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external';
-                weight: number;
-                threshold?: number;
-                extractor?: {
-                    type: 'regex';
-                    pattern: string;
-                    group?: number;
-                } | {
-                    type: 'delimiter';
-                    delimiter: string;
-                    position?: 'first' | 'last';
-                } | {
-                    type: 'last-line';
-                    trim?: boolean;
-                } | {
-                    type: 'choice-index';
-                    labels?: Array<string>;
-                    pattern?: string;
-                };
-                config: {
-                    value: string;
-                    threshold?: number;
-                } | {
-                    value: number;
-                    tolerance?: number;
-                } | {
-                    pattern: string;
-                } | {
-                    code: string;
-                } | {
-                    criteria: string;
-                    model?: string;
-                    provider?: string;
-                    systemRole?: string;
-                } | {
-                    values: Array<string>;
-                    caseSensitive?: boolean;
-                } | {
-                    schema: {
-                        [key: string]: unknown;
-                    };
-                } | {
-                    extractor: {
-                        type: 'regex';
-                        pattern: string;
-                        group?: number;
-                    } | {
-                        type: 'delimiter';
-                        delimiter: string;
-                        position?: 'first' | 'last';
-                    } | {
-                        type: 'last-line';
-                        trim?: boolean;
-                    } | {
-                        type: 'choice-index';
-                        labels?: Array<string>;
-                        pattern?: string;
-                    };
-                    innerMatcher?: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external';
-                };
-            }>;
-            createdAt: string;
-            updatedAt: string;
-            isSystem: boolean;
-        };
+        data: EvalBenchmark;
         message?: string;
         success: true;
         timestamp: string;
@@ -3795,13 +5932,9 @@ export type PatchApiV1EvalBenchmarksByIdData = {
 
 export type PatchApiV1EvalBenchmarksByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -3835,83 +5968,7 @@ export type PatchApiV1EvalBenchmarksByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-            identifier: string;
-            name: string;
-            description: string | null;
-            metadata: {
-                [key: string]: unknown;
-            } | null;
-            referenceUrl: string | null;
-            rubrics: Array<{
-                id: string;
-                name: string;
-                type: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external';
-                weight: number;
-                threshold?: number;
-                extractor?: {
-                    type: 'regex';
-                    pattern: string;
-                    group?: number;
-                } | {
-                    type: 'delimiter';
-                    delimiter: string;
-                    position?: 'first' | 'last';
-                } | {
-                    type: 'last-line';
-                    trim?: boolean;
-                } | {
-                    type: 'choice-index';
-                    labels?: Array<string>;
-                    pattern?: string;
-                };
-                config: {
-                    value: string;
-                    threshold?: number;
-                } | {
-                    value: number;
-                    tolerance?: number;
-                } | {
-                    pattern: string;
-                } | {
-                    code: string;
-                } | {
-                    criteria: string;
-                    model?: string;
-                    provider?: string;
-                    systemRole?: string;
-                } | {
-                    values: Array<string>;
-                    caseSensitive?: boolean;
-                } | {
-                    schema: {
-                        [key: string]: unknown;
-                    };
-                } | {
-                    extractor: {
-                        type: 'regex';
-                        pattern: string;
-                        group?: number;
-                    } | {
-                        type: 'delimiter';
-                        delimiter: string;
-                        position?: 'first' | 'last';
-                    } | {
-                        type: 'last-line';
-                        trim?: boolean;
-                    } | {
-                        type: 'choice-index';
-                        labels?: Array<string>;
-                        pattern?: string;
-                    };
-                    innerMatcher?: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external';
-                };
-            }>;
-            createdAt: string;
-            updatedAt: string;
-            isSystem: boolean;
-        };
+        data: EvalBenchmark;
         message?: string;
         success: true;
         timestamp: string;
@@ -3924,9 +5981,31 @@ export type GetApiV1EvalDatasetsData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         offset?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
         pageSize?: number;
         benchmarkId?: string;
     };
@@ -3935,13 +6014,9 @@ export type GetApiV1EvalDatasetsData = {
 
 export type GetApiV1EvalDatasetsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -3950,14 +6025,6 @@ export type GetApiV1EvalDatasetsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -3975,26 +6042,11 @@ export type GetApiV1EvalDatasetsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            datasets: Array<{
-                id: string;
-                identifier: string;
-                name: string;
-                benchmarkId: string | null;
-                description: string | null;
-                metadata: {
-                    [key: string]: unknown;
-                } | null;
-                evalConfig: {
-                    [key: string]: unknown;
-                } | null;
-                evalMode: string | null;
-                createdAt: string;
-                updatedAt: string;
-                sourceExperimentId: string | null;
-                testCaseCount: number;
-            }>;
-            total: number;
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
+            datasets: Array<EvalDataset>;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -4019,6 +6071,12 @@ export type PostApiV1EvalDatasetsData = {
         } | null;
         evalMode?: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external' | null;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/eval/datasets';
@@ -4026,13 +6084,9 @@ export type PostApiV1EvalDatasetsData = {
 
 export type PostApiV1EvalDatasetsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -4066,24 +6120,7 @@ export type PostApiV1EvalDatasetsResponses = {
      * Successful response
      */
     201: {
-        data?: {
-            id: string;
-            identifier: string;
-            name: string;
-            benchmarkId: string | null;
-            description: string | null;
-            metadata: {
-                [key: string]: unknown;
-            } | null;
-            evalConfig: {
-                [key: string]: unknown;
-            } | null;
-            evalMode: string | null;
-            createdAt: string;
-            updatedAt: string;
-            sourceExperimentId: string | null;
-            testCaseCount: number;
-        };
+        data: EvalDataset;
         message?: string;
         success: true;
         timestamp: string;
@@ -4103,13 +6140,9 @@ export type DeleteApiV1EvalDatasetsByIdData = {
 
 export type DeleteApiV1EvalDatasetsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -4122,10 +6155,6 @@ export type DeleteApiV1EvalDatasetsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -4143,9 +6172,7 @@ export type DeleteApiV1EvalDatasetsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-        };
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -4165,13 +6192,9 @@ export type GetApiV1EvalDatasetsByIdData = {
 
 export type GetApiV1EvalDatasetsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -4184,10 +6207,6 @@ export type GetApiV1EvalDatasetsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -4205,24 +6224,7 @@ export type GetApiV1EvalDatasetsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-            identifier: string;
-            name: string;
-            benchmarkId: string | null;
-            description: string | null;
-            metadata: {
-                [key: string]: unknown;
-            } | null;
-            evalConfig: {
-                [key: string]: unknown;
-            } | null;
-            evalMode: string | null;
-            createdAt: string;
-            updatedAt: string;
-            sourceExperimentId: string | null;
-            testCaseCount: number;
-        };
+        data: EvalDataset;
         message?: string;
         success: true;
         timestamp: string;
@@ -4254,13 +6256,9 @@ export type PatchApiV1EvalDatasetsByIdData = {
 
 export type PatchApiV1EvalDatasetsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -4294,24 +6292,7 @@ export type PatchApiV1EvalDatasetsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-            identifier: string;
-            name: string;
-            benchmarkId: string | null;
-            description: string | null;
-            metadata: {
-                [key: string]: unknown;
-            } | null;
-            evalConfig: {
-                [key: string]: unknown;
-            } | null;
-            evalMode: string | null;
-            createdAt: string;
-            updatedAt: string;
-            sourceExperimentId: string | null;
-            testCaseCount: number;
-        };
+        data: EvalDataset;
         message?: string;
         success: true;
         timestamp: string;
@@ -4326,9 +6307,31 @@ export type GetApiV1EvalDatasetsByDatasetIdTestCasesData = {
         datasetId: string;
     };
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         offset?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
         pageSize?: number;
     };
     url: '/api/v1/eval/datasets/{datasetId}/test-cases';
@@ -4336,13 +6339,9 @@ export type GetApiV1EvalDatasetsByDatasetIdTestCasesData = {
 
 export type GetApiV1EvalDatasetsByDatasetIdTestCasesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -4355,10 +6354,6 @@ export type GetApiV1EvalDatasetsByDatasetIdTestCasesErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -4376,77 +6371,11 @@ export type GetApiV1EvalDatasetsByDatasetIdTestCasesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            testCases: Array<{
-                id: string;
-                input: string;
-                expected?: string;
-                category?: string;
-                choices?: Array<string>;
-                environment?: {
-                    envPrompt?: string;
-                    toolForwarding?: {
-                        [key: string]: {
-                            endpoint: string;
-                            timeoutMs?: number;
-                        };
-                    };
-                };
-                messages?: Array<{
-                    content: string;
-                    role: 'user' | 'assistant' | 'system' | 'tool';
-                    id?: string;
-                    parentId?: string | null;
-                    model?: string;
-                    provider?: string;
-                    createdAt?: string | number;
-                    updatedAt?: string | number;
-                    tools?: Array<{
-                        [key: string]: unknown;
-                    }>;
-                    tool_call_id?: string;
-                    metadata?: {
-                        [key: string]: unknown;
-                    };
-                    reasoning?: {
-                        [key: string]: unknown;
-                    };
-                    plugin?: {
-                        [key: string]: unknown;
-                    };
-                    pluginState?: {
-                        [key: string]: unknown;
-                    };
-                    pluginError?: {
-                        [key: string]: unknown;
-                    };
-                    pluginIntervention?: {
-                        [key: string]: unknown;
-                    };
-                    error?: {
-                        [key: string]: unknown;
-                    };
-                    search?: {
-                        [key: string]: unknown;
-                    };
-                }>;
-                caseId?: string;
-                sortOrder: number | null;
-                evalMode?: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external' | null;
-                evalConfig?: {
-                    [key: string]: unknown;
-                } | null;
-                createdAt: string;
-                updatedAt: string;
-                datasetId: string;
-                content: {
-                    [key: string]: unknown;
-                };
-                metadata: {
-                    [key: string]: unknown;
-                } | null;
-            }>;
-            total: number;
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
+            testCases: Array<EvalTestCase>;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -4517,6 +6446,12 @@ export type PostApiV1EvalDatasetsByDatasetIdTestCasesData = {
             [key: string]: unknown;
         } | null;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         datasetId: string;
     };
@@ -4526,13 +6461,9 @@ export type PostApiV1EvalDatasetsByDatasetIdTestCasesData = {
 
 export type PostApiV1EvalDatasetsByDatasetIdTestCasesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -4566,75 +6497,7 @@ export type PostApiV1EvalDatasetsByDatasetIdTestCasesResponses = {
      * Successful response
      */
     201: {
-        data?: {
-            id: string;
-            input: string;
-            expected?: string;
-            category?: string;
-            choices?: Array<string>;
-            environment?: {
-                envPrompt?: string;
-                toolForwarding?: {
-                    [key: string]: {
-                        endpoint: string;
-                        timeoutMs?: number;
-                    };
-                };
-            };
-            messages?: Array<{
-                content: string;
-                role: 'user' | 'assistant' | 'system' | 'tool';
-                id?: string;
-                parentId?: string | null;
-                model?: string;
-                provider?: string;
-                createdAt?: string | number;
-                updatedAt?: string | number;
-                tools?: Array<{
-                    [key: string]: unknown;
-                }>;
-                tool_call_id?: string;
-                metadata?: {
-                    [key: string]: unknown;
-                };
-                reasoning?: {
-                    [key: string]: unknown;
-                };
-                plugin?: {
-                    [key: string]: unknown;
-                };
-                pluginState?: {
-                    [key: string]: unknown;
-                };
-                pluginError?: {
-                    [key: string]: unknown;
-                };
-                pluginIntervention?: {
-                    [key: string]: unknown;
-                };
-                error?: {
-                    [key: string]: unknown;
-                };
-                search?: {
-                    [key: string]: unknown;
-                };
-            }>;
-            caseId?: string;
-            sortOrder: number | null;
-            evalMode?: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external' | null;
-            evalConfig?: {
-                [key: string]: unknown;
-            } | null;
-            createdAt: string;
-            updatedAt: string;
-            datasetId: string;
-            content: {
-                [key: string]: unknown;
-            };
-            metadata: {
-                [key: string]: unknown;
-            } | null;
-        };
+        data: EvalTestCase;
         message?: string;
         success: true;
         timestamp: string;
@@ -4654,13 +6517,9 @@ export type DeleteApiV1EvalTestCasesByIdData = {
 
 export type DeleteApiV1EvalTestCasesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -4673,10 +6532,6 @@ export type DeleteApiV1EvalTestCasesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -4694,9 +6549,7 @@ export type DeleteApiV1EvalTestCasesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-        };
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -4716,13 +6569,9 @@ export type GetApiV1EvalTestCasesByIdData = {
 
 export type GetApiV1EvalTestCasesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -4735,10 +6584,6 @@ export type GetApiV1EvalTestCasesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -4756,75 +6601,7 @@ export type GetApiV1EvalTestCasesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-            input: string;
-            expected?: string;
-            category?: string;
-            choices?: Array<string>;
-            environment?: {
-                envPrompt?: string;
-                toolForwarding?: {
-                    [key: string]: {
-                        endpoint: string;
-                        timeoutMs?: number;
-                    };
-                };
-            };
-            messages?: Array<{
-                content: string;
-                role: 'user' | 'assistant' | 'system' | 'tool';
-                id?: string;
-                parentId?: string | null;
-                model?: string;
-                provider?: string;
-                createdAt?: string | number;
-                updatedAt?: string | number;
-                tools?: Array<{
-                    [key: string]: unknown;
-                }>;
-                tool_call_id?: string;
-                metadata?: {
-                    [key: string]: unknown;
-                };
-                reasoning?: {
-                    [key: string]: unknown;
-                };
-                plugin?: {
-                    [key: string]: unknown;
-                };
-                pluginState?: {
-                    [key: string]: unknown;
-                };
-                pluginError?: {
-                    [key: string]: unknown;
-                };
-                pluginIntervention?: {
-                    [key: string]: unknown;
-                };
-                error?: {
-                    [key: string]: unknown;
-                };
-                search?: {
-                    [key: string]: unknown;
-                };
-            }>;
-            caseId?: string;
-            sortOrder: number | null;
-            evalMode?: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external' | null;
-            evalConfig?: {
-                [key: string]: unknown;
-            } | null;
-            createdAt: string;
-            updatedAt: string;
-            datasetId: string;
-            content: {
-                [key: string]: unknown;
-            };
-            metadata: {
-                [key: string]: unknown;
-            } | null;
-        };
+        data: EvalTestCase;
         message?: string;
         success: true;
         timestamp: string;
@@ -4902,13 +6679,9 @@ export type PatchApiV1EvalTestCasesByIdData = {
 
 export type PatchApiV1EvalTestCasesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -4921,10 +6694,6 @@ export type PatchApiV1EvalTestCasesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -4942,75 +6711,7 @@ export type PatchApiV1EvalTestCasesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-            input: string;
-            expected?: string;
-            category?: string;
-            choices?: Array<string>;
-            environment?: {
-                envPrompt?: string;
-                toolForwarding?: {
-                    [key: string]: {
-                        endpoint: string;
-                        timeoutMs?: number;
-                    };
-                };
-            };
-            messages?: Array<{
-                content: string;
-                role: 'user' | 'assistant' | 'system' | 'tool';
-                id?: string;
-                parentId?: string | null;
-                model?: string;
-                provider?: string;
-                createdAt?: string | number;
-                updatedAt?: string | number;
-                tools?: Array<{
-                    [key: string]: unknown;
-                }>;
-                tool_call_id?: string;
-                metadata?: {
-                    [key: string]: unknown;
-                };
-                reasoning?: {
-                    [key: string]: unknown;
-                };
-                plugin?: {
-                    [key: string]: unknown;
-                };
-                pluginState?: {
-                    [key: string]: unknown;
-                };
-                pluginError?: {
-                    [key: string]: unknown;
-                };
-                pluginIntervention?: {
-                    [key: string]: unknown;
-                };
-                error?: {
-                    [key: string]: unknown;
-                };
-                search?: {
-                    [key: string]: unknown;
-                };
-            }>;
-            caseId?: string;
-            sortOrder: number | null;
-            evalMode?: 'equals' | 'contains' | 'regex' | 'starts-with' | 'ends-with' | 'any-of' | 'numeric' | 'extract-match' | 'json-schema' | 'javascript' | 'python' | 'llm-rubric' | 'factuality' | 'answer-relevance' | 'similar' | 'levenshtein' | 'rubric' | 'external' | null;
-            evalConfig?: {
-                [key: string]: unknown;
-            } | null;
-            createdAt: string;
-            updatedAt: string;
-            datasetId: string;
-            content: {
-                [key: string]: unknown;
-            };
-            metadata: {
-                [key: string]: unknown;
-            } | null;
-        };
+        data: EvalTestCase;
         message?: string;
         success: true;
         timestamp: string;
@@ -5021,6 +6722,12 @@ export type PatchApiV1EvalTestCasesByIdResponse = PatchApiV1EvalTestCasesByIdRes
 
 export type PostApiV1EvalRunsByIdClaimData = {
     body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -5030,13 +6737,9 @@ export type PostApiV1EvalRunsByIdClaimData = {
 
 export type PostApiV1EvalRunsByIdClaimErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5070,25 +6773,7 @@ export type PostApiV1EvalRunsByIdClaimResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-            createdAt: string;
-            updatedAt: string;
-            config: {
-                [key: string]: unknown;
-            };
-            executionMode: 'internal' | 'external';
-            datasetId: string;
-            experimentId: string | null;
-            parentRunId: string | null;
-            status: 'idle' | 'pending' | 'running' | 'external' | 'completed' | 'failed' | 'aborted';
-            targetAgentId: string | null;
-            name: string | null;
-            metrics: {
-                [key: string]: unknown;
-            } | null;
-            startedAt: string | null;
-        };
+        data: EvalRun;
         message?: string;
         success: true;
         timestamp: string;
@@ -5110,13 +6795,9 @@ export type PatchApiV1EvalRunsByIdStatusData = {
 
 export type PatchApiV1EvalRunsByIdStatusErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5150,25 +6831,7 @@ export type PatchApiV1EvalRunsByIdStatusResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-            createdAt: string;
-            updatedAt: string;
-            config: {
-                [key: string]: unknown;
-            };
-            executionMode: 'internal' | 'external';
-            datasetId: string;
-            experimentId: string | null;
-            parentRunId: string | null;
-            status: 'idle' | 'pending' | 'running' | 'external' | 'completed' | 'failed' | 'aborted';
-            targetAgentId: string | null;
-            name: string | null;
-            metrics: {
-                [key: string]: unknown;
-            } | null;
-            startedAt: string | null;
-        };
+        data: EvalRun;
         message?: string;
         success: true;
         timestamp: string;
@@ -5179,6 +6842,12 @@ export type PatchApiV1EvalRunsByIdStatusResponse = PatchApiV1EvalRunsByIdStatusR
 
 export type PostApiV1EvalRunsByIdRetryErrorsData = {
     body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -5188,13 +6857,9 @@ export type PostApiV1EvalRunsByIdRetryErrorsData = {
 
 export type PostApiV1EvalRunsByIdRetryErrorsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5228,10 +6893,7 @@ export type PostApiV1EvalRunsByIdRetryErrorsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            runId: string;
-            retryCount: number;
-        };
+        data: EvalRetryErrors;
         message?: string;
         success: true;
         timestamp: string;
@@ -5260,13 +6922,9 @@ export type PutApiV1EvalRunsByRunIdTopicsByTopicIdResultData = {
 
 export type PutApiV1EvalRunsByRunIdTopicsByTopicIdResultErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5300,17 +6958,7 @@ export type PutApiV1EvalRunsByRunIdTopicsByTopicIdResultResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            idempotent: boolean;
-            reportedThreads: number;
-            runId: string;
-            runStatus?: string;
-            success: boolean;
-            threadId?: string;
-            topicFinalized: boolean;
-            topicId: string;
-            totalThreads: number;
-        };
+        data: EvalReportResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -5323,9 +6971,31 @@ export type GetApiV1PluginsData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         offset?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
         pageSize?: number;
     };
     url: '/api/v1/plugins';
@@ -5333,13 +7003,9 @@ export type GetApiV1PluginsData = {
 
 export type GetApiV1PluginsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5348,14 +7014,6 @@ export type GetApiV1PluginsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -5373,15 +7031,7 @@ export type GetApiV1PluginsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            plugins: Array<{
-                identifier?: string;
-                type?: string;
-                createdAt?: string;
-                updatedAt?: string;
-            }>;
-            total: number;
-        };
+        data: InstalledPluginList;
         message?: string;
         success: true;
         timestamp: string;
@@ -5394,9 +7044,27 @@ export type GetApiV1FilesData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
         fileType?: string;
         knowledgeBaseId?: string;
         queryAll?: string;
@@ -5409,13 +7077,9 @@ export type GetApiV1FilesData = {
 
 export type GetApiV1FilesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5424,14 +7088,6 @@ export type GetApiV1FilesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -5449,11 +7105,7 @@ export type GetApiV1FilesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            files: Array<File>;
-            total?: number;
-            [key: string]: unknown;
-        };
+        data: FileList;
         message?: string;
         success: true;
         timestamp: string;
@@ -5471,6 +7123,12 @@ export type PostApiV1FilesData = {
         sessionId?: string;
         skipCheckFileType?: boolean;
         skipDeduplication?: boolean;
+    };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
     };
     path?: never;
     query?: never;
@@ -5491,14 +7149,6 @@ export type PostApiV1FilesErrors = {
      */
     403: ApiError;
     /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
-    /**
      * Rate limit exceeded
      */
     429: ApiError;
@@ -5515,12 +7165,7 @@ export type PostApiV1FilesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            file: File;
-            parsed?: {
-                [key: string]: unknown;
-            };
-        };
+        data: FileDetail;
         message?: string;
         success: true;
         timestamp: string;
@@ -5540,13 +7185,9 @@ export type DeleteApiV1FilesByIdData = {
 
 export type DeleteApiV1FilesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5555,14 +7196,6 @@ export type DeleteApiV1FilesByIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -5580,9 +7213,7 @@ export type DeleteApiV1FilesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -5602,13 +7233,9 @@ export type GetApiV1FilesByIdData = {
 
 export type GetApiV1FilesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5617,14 +7244,6 @@ export type GetApiV1FilesByIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -5642,12 +7261,7 @@ export type GetApiV1FilesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            file: File;
-            parsed?: {
-                [key: string]: unknown;
-            };
-        };
+        data: FileDetail;
         message?: string;
         success: true;
         timestamp: string;
@@ -5669,13 +7283,9 @@ export type PatchApiV1FilesByIdData = {
 
 export type PatchApiV1FilesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5688,10 +7298,6 @@ export type PatchApiV1FilesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -5709,7 +7315,7 @@ export type PatchApiV1FilesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: File;
+        data: FileDetail;
         message?: string;
         success: true;
         timestamp: string;
@@ -5731,13 +7337,9 @@ export type GetApiV1FilesByIdUrlData = {
 
 export type GetApiV1FilesByIdUrlErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5746,14 +7348,6 @@ export type GetApiV1FilesByIdUrlErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -5771,9 +7365,7 @@ export type GetApiV1FilesByIdUrlResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: FileUrl;
         message?: string;
         success: true;
         timestamp: string;
@@ -5784,6 +7376,12 @@ export type GetApiV1FilesByIdUrlResponse = GetApiV1FilesByIdUrlResponses[keyof G
 
 export type PostApiV1FilesByIdParsesData = {
     body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -5795,13 +7393,9 @@ export type PostApiV1FilesByIdParsesData = {
 
 export type PostApiV1FilesByIdParsesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5810,14 +7404,6 @@ export type PostApiV1FilesByIdParsesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -5835,9 +7421,7 @@ export type PostApiV1FilesByIdParsesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: FileParseResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -5857,13 +7441,9 @@ export type GetApiV1FilesByIdChunksData = {
 
 export type GetApiV1FilesByIdChunksErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5872,14 +7452,6 @@ export type GetApiV1FilesByIdChunksErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -5897,9 +7469,7 @@ export type GetApiV1FilesByIdChunksResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: FileChunkStatus;
         message?: string;
         success: true;
         timestamp: string;
@@ -5913,6 +7483,12 @@ export type PostApiV1FilesByIdChunksData = {
         autoEmbedding?: boolean;
         skipExist?: boolean;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -5922,13 +7498,9 @@ export type PostApiV1FilesByIdChunksData = {
 
 export type PostApiV1FilesByIdChunksErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -5937,14 +7509,6 @@ export type PostApiV1FilesByIdChunksErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -5962,9 +7526,7 @@ export type PostApiV1FilesByIdChunksResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: FileChunkTask;
         message?: string;
         success: true;
         timestamp: string;
@@ -5981,6 +7543,12 @@ export type PostApiV1FilesBatchesData = {
         knowledgeBaseId?: string;
         sessionId?: string;
         skipCheckFileType?: boolean;
+    };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
     };
     path?: never;
     query?: never;
@@ -6001,14 +7569,6 @@ export type PostApiV1FilesBatchesErrors = {
      */
     403: ApiError;
     /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
-    /**
      * Rate limit exceeded
      */
     429: ApiError;
@@ -6025,23 +7585,7 @@ export type PostApiV1FilesBatchesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            failed: Array<{
-                error: string;
-                name: string;
-            }>;
-            successful: Array<{
-                file: File;
-                parsed?: {
-                    [key: string]: unknown;
-                };
-            }>;
-            summary: {
-                failed: number;
-                successful: number;
-                total: number;
-            };
-        };
+        data: BatchFileUploadResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -6054,6 +7598,12 @@ export type PostApiV1FilesQueriesData = {
     body: {
         fileIds: Array<string>;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/files/queries';
@@ -6061,13 +7611,9 @@ export type PostApiV1FilesQueriesData = {
 
 export type PostApiV1FilesQueriesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6076,14 +7622,6 @@ export type PostApiV1FilesQueriesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6101,20 +7639,7 @@ export type PostApiV1FilesQueriesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            failed: Array<{
-                error: string;
-                fileId: string;
-            }>;
-            files: Array<{
-                file: File;
-                parsed?: {
-                    [key: string]: unknown;
-                };
-            }>;
-            success: number;
-            total: number;
-        };
+        data: BatchGetFilesResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -6128,7 +7653,19 @@ export type GetApiV1GoalsData = {
     path?: never;
     query?: {
         agentId?: string;
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         offset?: number;
         projectId?: string;
         statuses?: string;
@@ -6139,13 +7676,9 @@ export type GetApiV1GoalsData = {
 
 export type GetApiV1GoalsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6154,14 +7687,6 @@ export type GetApiV1GoalsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6179,9 +7704,7 @@ export type GetApiV1GoalsResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: GoalList;
         message?: string;
         success: true;
         timestamp: string;
@@ -6212,6 +7735,12 @@ export type PostApiV1GoalsData = {
         }>;
         title: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/goals';
@@ -6219,13 +7748,9 @@ export type PostApiV1GoalsData = {
 
 export type PostApiV1GoalsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6238,10 +7763,6 @@ export type PostApiV1GoalsErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6259,9 +7780,7 @@ export type PostApiV1GoalsResponses = {
      * Successful response
      */
     201: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: GoalGraphSnapshot;
         message?: string;
         success: true;
         timestamp: string;
@@ -6281,13 +7800,9 @@ export type DeleteApiV1GoalsByIdData = {
 
 export type DeleteApiV1GoalsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6305,6 +7820,10 @@ export type DeleteApiV1GoalsByIdErrors = {
      */
     409: ApiError;
     /**
+     * Precondition failed
+     */
+    412: ApiError;
+    /**
      * Rate limit exceeded
      */
     429: ApiError;
@@ -6321,9 +7840,7 @@ export type DeleteApiV1GoalsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -6343,13 +7860,9 @@ export type GetApiV1GoalsByIdData = {
 
 export type GetApiV1GoalsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6362,10 +7875,6 @@ export type GetApiV1GoalsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6383,9 +7892,7 @@ export type GetApiV1GoalsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: GoalGraph;
         message?: string;
         success: true;
         timestamp: string;
@@ -6417,13 +7924,9 @@ export type PatchApiV1GoalsByIdData = {
 
 export type PatchApiV1GoalsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6436,10 +7939,6 @@ export type PatchApiV1GoalsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6457,9 +7956,7 @@ export type PatchApiV1GoalsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: GoalGraph;
         message?: string;
         success: true;
         timestamp: string;
@@ -6479,13 +7976,9 @@ export type GetApiV1GoalsByIdSupervisionData = {
 
 export type GetApiV1GoalsByIdSupervisionErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6498,10 +7991,6 @@ export type GetApiV1GoalsByIdSupervisionErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6519,9 +8008,7 @@ export type GetApiV1GoalsByIdSupervisionResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: GoalSupervision;
         message?: string;
         success: true;
         timestamp: string;
@@ -6532,6 +8019,12 @@ export type GetApiV1GoalsByIdSupervisionResponse = GetApiV1GoalsByIdSupervisionR
 
 export type PostApiV1GoalsByIdAdvanceData = {
     body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -6541,13 +8034,9 @@ export type PostApiV1GoalsByIdAdvanceData = {
 
 export type PostApiV1GoalsByIdAdvanceErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6560,10 +8049,6 @@ export type PostApiV1GoalsByIdAdvanceErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6581,9 +8066,7 @@ export type PostApiV1GoalsByIdAdvanceResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: GoalAdvanceResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -6594,6 +8077,12 @@ export type PostApiV1GoalsByIdAdvanceResponse = PostApiV1GoalsByIdAdvanceRespons
 
 export type PostApiV1GoalsByIdPauseData = {
     body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -6603,13 +8092,9 @@ export type PostApiV1GoalsByIdPauseData = {
 
 export type PostApiV1GoalsByIdPauseErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6626,6 +8111,10 @@ export type PostApiV1GoalsByIdPauseErrors = {
      * Resource conflict
      */
     409: ApiError;
+    /**
+     * Precondition failed
+     */
+    412: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6643,9 +8132,7 @@ export type PostApiV1GoalsByIdPauseResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: Goal;
         message?: string;
         success: true;
         timestamp: string;
@@ -6656,6 +8143,12 @@ export type PostApiV1GoalsByIdPauseResponse = PostApiV1GoalsByIdPauseResponses[k
 
 export type PostApiV1GoalsByIdResumeData = {
     body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -6665,13 +8158,9 @@ export type PostApiV1GoalsByIdResumeData = {
 
 export type PostApiV1GoalsByIdResumeErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6688,6 +8177,10 @@ export type PostApiV1GoalsByIdResumeErrors = {
      * Resource conflict
      */
     409: ApiError;
+    /**
+     * Precondition failed
+     */
+    412: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6705,9 +8198,7 @@ export type PostApiV1GoalsByIdResumeResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: Goal;
         message?: string;
         success: true;
         timestamp: string;
@@ -6720,6 +8211,12 @@ export type PostApiV1GoalsByIdRestartData = {
     body: {
         agentId?: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -6729,13 +8226,9 @@ export type PostApiV1GoalsByIdRestartData = {
 
 export type PostApiV1GoalsByIdRestartErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6749,9 +8242,9 @@ export type PostApiV1GoalsByIdRestartErrors = {
      */
     404: ApiError;
     /**
-     * Resource conflict
+     * Precondition failed
      */
-    409: ApiError;
+    412: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6769,9 +8262,7 @@ export type PostApiV1GoalsByIdRestartResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: GoalRestartResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -6796,6 +8287,12 @@ export type PostApiV1ImMessagesData = {
         groupId: string;
         topicId?: string | null;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/im/messages';
@@ -6803,13 +8300,9 @@ export type PostApiV1ImMessagesData = {
 
 export type PostApiV1ImMessagesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6843,26 +8336,7 @@ export type PostApiV1ImMessagesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            accepted: boolean;
-            operationId: string | null;
-            topicId: string;
-            userMessage: {
-                agentId: string | null;
-                content: string;
-                createdAt: string;
-                error: boolean;
-                files?: Array<{
-                    id: string;
-                    name: string;
-                    fileType: string;
-                    size: number;
-                    url: string;
-                }>;
-                id: string;
-                role: 'assistant' | 'user';
-            };
-        };
+        data: ImSendResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -6887,13 +8361,9 @@ export type GetApiV1ImTopicsByTopicIdSyncData = {
 
 export type GetApiV1ImTopicsByTopicIdSyncErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6906,10 +8376,6 @@ export type GetApiV1ImTopicsByTopicIdSyncErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -6927,31 +8393,7 @@ export type GetApiV1ImTopicsByTopicIdSyncResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            cursor: string;
-            messages: Array<{
-                agentId: string | null;
-                content: string;
-                createdAt: string;
-                error: boolean;
-                files?: Array<{
-                    id: string;
-                    name: string;
-                    fileType: string;
-                    size: number;
-                    url: string;
-                }>;
-                id: string;
-                role: 'assistant' | 'user';
-            }>;
-            readUpTo: {
-                messageId: string;
-                readAt: string;
-            } | null;
-            state: string;
-            typing: boolean;
-            unread: number;
-        };
+        data: ImSyncResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -6964,6 +8406,12 @@ export type PostApiV1ImTopicsByTopicIdReadData = {
     body: {
         messageId: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         topicId: string;
     };
@@ -6973,13 +8421,9 @@ export type PostApiV1ImTopicsByTopicIdReadData = {
 
 export type PostApiV1ImTopicsByTopicIdReadErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -6992,10 +8436,6 @@ export type PostApiV1ImTopicsByTopicIdReadErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7013,9 +8453,7 @@ export type PostApiV1ImTopicsByTopicIdReadResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            unread: number;
-        };
+        data: ImReadResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -7028,22 +8466,36 @@ export type GetApiV1KnowledgeBasesData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
     };
     url: '/api/v1/knowledge-bases';
 };
 
 export type GetApiV1KnowledgeBasesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7052,14 +8504,6 @@ export type GetApiV1KnowledgeBasesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7077,11 +8521,7 @@ export type GetApiV1KnowledgeBasesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            knowledgeBases: Array<KnowledgeBase>;
-            total?: number;
-            [key: string]: unknown;
-        };
+        data: KnowledgeBaseList;
         message?: string;
         success: true;
         timestamp: string;
@@ -7096,6 +8536,12 @@ export type PostApiV1KnowledgeBasesData = {
         description?: string;
         name: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/knowledge-bases';
@@ -7103,13 +8549,9 @@ export type PostApiV1KnowledgeBasesData = {
 
 export type PostApiV1KnowledgeBasesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7118,14 +8560,6 @@ export type PostApiV1KnowledgeBasesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7143,7 +8577,7 @@ export type PostApiV1KnowledgeBasesResponses = {
      * Successful response
      */
     200: {
-        data?: KnowledgeBase;
+        data: KnowledgeBaseDetail;
         message?: string;
         success: true;
         timestamp: string;
@@ -7163,13 +8597,9 @@ export type DeleteApiV1KnowledgeBasesByIdData = {
 
 export type DeleteApiV1KnowledgeBasesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7182,10 +8612,6 @@ export type DeleteApiV1KnowledgeBasesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7203,9 +8629,7 @@ export type DeleteApiV1KnowledgeBasesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -7225,13 +8649,9 @@ export type GetApiV1KnowledgeBasesByIdData = {
 
 export type GetApiV1KnowledgeBasesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7244,10 +8664,6 @@ export type GetApiV1KnowledgeBasesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7265,7 +8681,7 @@ export type GetApiV1KnowledgeBasesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: KnowledgeBase;
+        data: KnowledgeBaseDetail;
         message?: string;
         success: true;
         timestamp: string;
@@ -7289,13 +8705,9 @@ export type PatchApiV1KnowledgeBasesByIdData = {
 
 export type PatchApiV1KnowledgeBasesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7308,10 +8720,6 @@ export type PatchApiV1KnowledgeBasesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7329,7 +8737,7 @@ export type PatchApiV1KnowledgeBasesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: KnowledgeBase;
+        data: KnowledgeBaseDetail;
         message?: string;
         success: true;
         timestamp: string;
@@ -7344,9 +8752,27 @@ export type GetApiV1KnowledgeBasesByIdFilesData = {
         id: string;
     };
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
         fileType?: string | null;
     };
     url: '/api/v1/knowledge-bases/{id}/files';
@@ -7354,13 +8780,9 @@ export type GetApiV1KnowledgeBasesByIdFilesData = {
 
 export type GetApiV1KnowledgeBasesByIdFilesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7373,10 +8795,6 @@ export type GetApiV1KnowledgeBasesByIdFilesErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7394,9 +8812,7 @@ export type GetApiV1KnowledgeBasesByIdFilesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: FileList;
         message?: string;
         success: true;
         timestamp: string;
@@ -7418,13 +8834,9 @@ export type DeleteApiV1KnowledgeBasesByIdFilesBatchData = {
 
 export type DeleteApiV1KnowledgeBasesByIdFilesBatchErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7437,10 +8849,6 @@ export type DeleteApiV1KnowledgeBasesByIdFilesBatchErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7458,9 +8866,7 @@ export type DeleteApiV1KnowledgeBasesByIdFilesBatchResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: KnowledgeBaseFileOperationResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -7473,6 +8879,12 @@ export type PostApiV1KnowledgeBasesByIdFilesBatchData = {
     body: {
         fileIds: Array<string>;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -7481,131 +8893,6 @@ export type PostApiV1KnowledgeBasesByIdFilesBatchData = {
 };
 
 export type PostApiV1KnowledgeBasesByIdFilesBatchErrors = {
-    /**
-     * Validation Error
-     */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
-    /**
-     * Authentication required
-     */
-    401: ApiError;
-    /**
-     * Insufficient permission
-     */
-    403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
-    /**
-     * Rate limit exceeded
-     */
-    429: ApiError;
-    /**
-     * Internal server error
-     */
-    500: ApiError;
-};
-
-export type PostApiV1KnowledgeBasesByIdFilesBatchError = PostApiV1KnowledgeBasesByIdFilesBatchErrors[keyof PostApiV1KnowledgeBasesByIdFilesBatchErrors];
-
-export type PostApiV1KnowledgeBasesByIdFilesBatchResponses = {
-    /**
-     * Successful response
-     */
-    200: {
-        data?: {
-            [key: string]: unknown;
-        };
-        message?: string;
-        success: true;
-        timestamp: string;
-    };
-};
-
-export type PostApiV1KnowledgeBasesByIdFilesBatchResponse = PostApiV1KnowledgeBasesByIdFilesBatchResponses[keyof PostApiV1KnowledgeBasesByIdFilesBatchResponses];
-
-export type PostApiV1KnowledgeBasesByIdFilesMoveData = {
-    body: {
-        fileIds: Array<string>;
-        targetKnowledgeBaseId: string;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/v1/knowledge-bases/{id}/files/move';
-};
-
-export type PostApiV1KnowledgeBasesByIdFilesMoveErrors = {
-    /**
-     * Validation Error
-     */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
-    /**
-     * Authentication required
-     */
-    401: ApiError;
-    /**
-     * Insufficient permission
-     */
-    403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
-    /**
-     * Rate limit exceeded
-     */
-    429: ApiError;
-    /**
-     * Internal server error
-     */
-    500: ApiError;
-};
-
-export type PostApiV1KnowledgeBasesByIdFilesMoveError = PostApiV1KnowledgeBasesByIdFilesMoveErrors[keyof PostApiV1KnowledgeBasesByIdFilesMoveErrors];
-
-export type PostApiV1KnowledgeBasesByIdFilesMoveResponses = {
-    /**
-     * Successful response
-     */
-    200: {
-        data?: {
-            [key: string]: unknown;
-        };
-        message?: string;
-        success: true;
-        timestamp: string;
-    };
-};
-
-export type PostApiV1KnowledgeBasesByIdFilesMoveResponse = PostApiV1KnowledgeBasesByIdFilesMoveResponses[keyof PostApiV1KnowledgeBasesByIdFilesMoveResponses];
-
-export type GetApiV1McpServersData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/mcp-servers';
-};
-
-export type GetApiV1McpServersErrors = {
     /**
      * Invalid request
      */
@@ -7623,9 +8910,127 @@ export type GetApiV1McpServersErrors = {
      */
     404: ApiError;
     /**
-     * Resource conflict
+     * Rate limit exceeded
      */
-    409: ApiError;
+    429: ApiError;
+    /**
+     * Internal server error
+     */
+    500: ApiError;
+};
+
+export type PostApiV1KnowledgeBasesByIdFilesBatchError = PostApiV1KnowledgeBasesByIdFilesBatchErrors[keyof PostApiV1KnowledgeBasesByIdFilesBatchErrors];
+
+export type PostApiV1KnowledgeBasesByIdFilesBatchResponses = {
+    /**
+     * Successful response
+     */
+    200: {
+        data: KnowledgeBaseFileOperationResult;
+        message?: string;
+        success: true;
+        timestamp: string;
+    };
+};
+
+export type PostApiV1KnowledgeBasesByIdFilesBatchResponse = PostApiV1KnowledgeBasesByIdFilesBatchResponses[keyof PostApiV1KnowledgeBasesByIdFilesBatchResponses];
+
+export type PostApiV1KnowledgeBasesByIdFilesMoveData = {
+    body: {
+        fileIds: Array<string>;
+        targetKnowledgeBaseId: string;
+    };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/knowledge-bases/{id}/files/move';
+};
+
+export type PostApiV1KnowledgeBasesByIdFilesMoveErrors = {
+    /**
+     * Invalid request
+     */
+    400: ApiError;
+    /**
+     * Authentication required
+     */
+    401: ApiError;
+    /**
+     * Insufficient permission
+     */
+    403: ApiError;
+    /**
+     * Resource not found
+     */
+    404: ApiError;
+    /**
+     * Rate limit exceeded
+     */
+    429: ApiError;
+    /**
+     * Internal server error
+     */
+    500: ApiError;
+};
+
+export type PostApiV1KnowledgeBasesByIdFilesMoveError = PostApiV1KnowledgeBasesByIdFilesMoveErrors[keyof PostApiV1KnowledgeBasesByIdFilesMoveErrors];
+
+export type PostApiV1KnowledgeBasesByIdFilesMoveResponses = {
+    /**
+     * Successful response
+     */
+    200: {
+        data: KnowledgeBaseFileOperationResult;
+        message?: string;
+        success: true;
+        timestamp: string;
+    };
+};
+
+export type PostApiV1KnowledgeBasesByIdFilesMoveResponse = PostApiV1KnowledgeBasesByIdFilesMoveResponses[keyof PostApiV1KnowledgeBasesByIdFilesMoveResponses];
+
+export type GetApiV1McpServersData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
+        /**
+         * Deprecated: `array` returns the pre-pagination bare array of every item instead of the paginated object. Migrate to `items` + `nextCursor`.
+         *
+         * @deprecated
+         */
+        format?: 'array';
+    };
+    url: '/api/v1/mcp-servers';
+};
+
+export type GetApiV1McpServersErrors = {
+    /**
+     * Invalid request
+     */
+    400: ApiError;
+    /**
+     * Authentication required
+     */
+    401: ApiError;
+    /**
+     * Insufficient permission
+     */
+    403: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7643,7 +9048,12 @@ export type GetApiV1McpServersResponses = {
      * Successful response
      */
     200: {
-        data?: Array<McpServer>;
+        data: {
+            items: Array<McpServer>;
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
+            total: PageTotal;
+        };
         message?: string;
         success: true;
         timestamp: string;
@@ -7672,6 +9082,12 @@ export type PostApiV1McpServersData = {
         name: string;
         serverUrl: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/mcp-servers';
@@ -7679,13 +9095,9 @@ export type PostApiV1McpServersData = {
 
 export type PostApiV1McpServersErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7694,10 +9106,6 @@ export type PostApiV1McpServersErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
     /**
      * Resource conflict
      */
@@ -7719,7 +9127,7 @@ export type PostApiV1McpServersResponses = {
      * Successful response
      */
     201: {
-        data?: McpServer;
+        data: McpServer;
         message?: string;
         success: true;
         timestamp: string;
@@ -7739,13 +9147,9 @@ export type DeleteApiV1McpServersByIdData = {
 
 export type DeleteApiV1McpServersByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7758,10 +9162,6 @@ export type DeleteApiV1McpServersByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7779,9 +9179,7 @@ export type DeleteApiV1McpServersByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -7801,13 +9199,9 @@ export type GetApiV1McpServersByIdData = {
 
 export type GetApiV1McpServersByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7820,10 +9214,6 @@ export type GetApiV1McpServersByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7841,7 +9231,7 @@ export type GetApiV1McpServersByIdResponses = {
      * Successful response
      */
     200: {
-        data?: McpServer;
+        data: McpServer;
         message?: string;
         success: true;
         timestamp: string;
@@ -7878,13 +9268,9 @@ export type PatchApiV1McpServersByIdData = {
 
 export type PatchApiV1McpServersByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7897,10 +9283,6 @@ export type PatchApiV1McpServersByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7918,7 +9300,7 @@ export type PatchApiV1McpServersByIdResponses = {
      * Successful response
      */
     200: {
-        data?: McpServer;
+        data: McpServer;
         message?: string;
         success: true;
         timestamp: string;
@@ -7929,6 +9311,12 @@ export type PatchApiV1McpServersByIdResponse = PatchApiV1McpServersByIdResponses
 
 export type PostApiV1McpServersByIdSyncData = {
     body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -7938,13 +9326,9 @@ export type PostApiV1McpServersByIdSyncData = {
 
 export type PostApiV1McpServersByIdSyncErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -7957,10 +9341,6 @@ export type PostApiV1McpServersByIdSyncErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -7978,11 +9358,7 @@ export type PostApiV1McpServersByIdSyncResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            id: string;
-            status: 'connected';
-            toolCount: number;
-        };
+        data: McpServerSyncResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -8000,10 +9376,6 @@ export type GetApiV1MemoriesPersonaData = {
 
 export type GetApiV1MemoriesPersonaErrors = {
     /**
-     * Invalid request
-     */
-    400: ApiError;
-    /**
      * Authentication required
      */
     401: ApiError;
@@ -8011,14 +9383,6 @@ export type GetApiV1MemoriesPersonaErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8036,9 +9400,7 @@ export type GetApiV1MemoriesPersonaResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: MemoryPersona | null;
         message?: string;
         success: true;
         timestamp: string;
@@ -8056,10 +9418,6 @@ export type GetApiV1MemoriesPersonaVersionsData = {
 
 export type GetApiV1MemoriesPersonaVersionsErrors = {
     /**
-     * Invalid request
-     */
-    400: ApiError;
-    /**
      * Authentication required
      */
     401: ApiError;
@@ -8067,14 +9425,6 @@ export type GetApiV1MemoriesPersonaVersionsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8092,9 +9442,7 @@ export type GetApiV1MemoriesPersonaVersionsResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: Array<MemoryPersonaVersion>;
         message?: string;
         success: true;
         timestamp: string;
@@ -8112,10 +9460,6 @@ export type DeleteApiV1MemoriesData = {
 
 export type DeleteApiV1MemoriesErrors = {
     /**
-     * Invalid request
-     */
-    400: ApiError;
-    /**
      * Authentication required
      */
     401: ApiError;
@@ -8123,14 +9467,6 @@ export type DeleteApiV1MemoriesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8148,9 +9484,7 @@ export type DeleteApiV1MemoriesResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResources;
         message?: string;
         success: true;
         timestamp: string;
@@ -8171,13 +9505,9 @@ export type DeleteApiV1MemoriesByCategoryByIdData = {
 
 export type DeleteApiV1MemoriesByCategoryByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8190,10 +9520,6 @@ export type DeleteApiV1MemoriesByCategoryByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8211,9 +9537,7 @@ export type DeleteApiV1MemoriesByCategoryByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -8233,13 +9557,9 @@ export type GetApiV1MemoriesByCategoryData = {
 
 export type GetApiV1MemoriesByCategoryErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8248,14 +9568,6 @@ export type GetApiV1MemoriesByCategoryErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8273,9 +9585,7 @@ export type GetApiV1MemoriesByCategoryResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: MemoryCategoryEntries;
         message?: string;
         success: true;
         timestamp: string;
@@ -8295,13 +9605,9 @@ export type DeleteApiV1MessageTranslationsByMessageIdData = {
 
 export type DeleteApiV1MessageTranslationsByMessageIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8314,10 +9620,6 @@ export type DeleteApiV1MessageTranslationsByMessageIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8335,9 +9637,7 @@ export type DeleteApiV1MessageTranslationsByMessageIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -8357,13 +9657,9 @@ export type GetApiV1MessageTranslationsByMessageIdData = {
 
 export type GetApiV1MessageTranslationsByMessageIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8372,14 +9668,6 @@ export type GetApiV1MessageTranslationsByMessageIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8397,9 +9685,7 @@ export type GetApiV1MessageTranslationsByMessageIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: MessageTranslation | null;
         message?: string;
         success: true;
         timestamp: string;
@@ -8425,13 +9711,9 @@ export type PatchApiV1MessageTranslationsByMessageIdData = {
 
 export type PatchApiV1MessageTranslationsByMessageIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8440,14 +9722,6 @@ export type PatchApiV1MessageTranslationsByMessageIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8465,9 +9739,7 @@ export type PatchApiV1MessageTranslationsByMessageIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: MessageTranslationWrite;
         message?: string;
         success: true;
         timestamp: string;
@@ -8483,6 +9755,12 @@ export type PostApiV1MessageTranslationsByMessageIdData = {
         provider?: string | null;
         to: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         messageId: string;
     };
@@ -8492,13 +9770,9 @@ export type PostApiV1MessageTranslationsByMessageIdData = {
 
 export type PostApiV1MessageTranslationsByMessageIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8507,14 +9781,6 @@ export type PostApiV1MessageTranslationsByMessageIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8532,9 +9798,7 @@ export type PostApiV1MessageTranslationsByMessageIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: MessageTranslationWrite;
         message?: string;
         success: true;
         timestamp: string;
@@ -8557,13 +9821,9 @@ export type GetApiV1MessagesCountData = {
 
 export type GetApiV1MessagesCountErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8572,14 +9832,6 @@ export type GetApiV1MessagesCountErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8597,7 +9849,7 @@ export type GetApiV1MessagesCountResponses = {
      * Successful response
      */
     200: {
-        data?: {
+        data: {
             count: number;
         };
         message?: string;
@@ -8619,13 +9871,9 @@ export type DeleteApiV1MessagesData = {
 
 export type DeleteApiV1MessagesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8634,14 +9882,6 @@ export type DeleteApiV1MessagesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8659,9 +9899,7 @@ export type DeleteApiV1MessagesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResources;
         message?: string;
         success: true;
         timestamp: string;
@@ -8678,10 +9916,32 @@ export type GetApiV1MessagesData = {
         topicId?: string | null;
         userId?: string | null;
         role?: 'user' | 'system' | 'assistant' | 'tool' | null;
-        keyword?: string;
-        page?: number;
-        pageSize?: number;
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
+        keyword?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         offset?: number;
     };
     url: '/api/v1/messages';
@@ -8689,13 +9949,9 @@ export type GetApiV1MessagesData = {
 
 export type GetApiV1MessagesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8704,14 +9960,6 @@ export type GetApiV1MessagesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8729,10 +9977,11 @@ export type GetApiV1MessagesResponses = {
      * Successful response
      */
     200: {
-        data?: {
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
             messages: Array<Message>;
-            total?: number;
-            [key: string]: unknown;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -8763,6 +10012,12 @@ export type PostApiV1MessagesData = {
         files?: Array<string> | null;
         favorite?: boolean | null;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/messages';
@@ -8770,13 +10025,9 @@ export type PostApiV1MessagesData = {
 
 export type PostApiV1MessagesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8785,14 +10036,6 @@ export type PostApiV1MessagesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8810,7 +10053,7 @@ export type PostApiV1MessagesResponses = {
      * Successful response
      */
     200: {
-        data?: Message;
+        data: Message;
         message?: string;
         success: true;
         timestamp: string;
@@ -8830,13 +10073,9 @@ export type DeleteApiV1MessagesByIdData = {
 
 export type DeleteApiV1MessagesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8849,10 +10088,6 @@ export type DeleteApiV1MessagesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8870,9 +10105,7 @@ export type DeleteApiV1MessagesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -8892,13 +10125,9 @@ export type GetApiV1MessagesByIdData = {
 
 export type GetApiV1MessagesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8911,10 +10140,6 @@ export type GetApiV1MessagesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -8932,7 +10157,7 @@ export type GetApiV1MessagesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Message;
+        data: Message;
         message?: string;
         success: true;
         timestamp: string;
@@ -8962,6 +10187,12 @@ export type PostApiV1MessagesRepliesData = {
         files?: Array<string> | null;
         favorite?: boolean | null;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/messages/replies';
@@ -8969,13 +10200,9 @@ export type PostApiV1MessagesRepliesData = {
 
 export type PostApiV1MessagesRepliesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -8984,14 +10211,6 @@ export type PostApiV1MessagesRepliesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9009,7 +10228,7 @@ export type PostApiV1MessagesRepliesResponses = {
      * Successful response
      */
     200: {
-        data?: Message | null;
+        data: Message | null;
         message?: string;
         success: true;
         timestamp: string;
@@ -9022,9 +10241,27 @@ export type GetApiV1ModelsData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
         enabled?: string | null;
         provider?: string | null;
         type?: 'chat' | 'embedding' | 'tts' | 'asr' | 'image' | 'text2video' | 'text2music' | 'realtime' | 'decision' | 'stt' | null;
@@ -9034,13 +10271,9 @@ export type GetApiV1ModelsData = {
 
 export type GetApiV1ModelsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -9049,14 +10282,6 @@ export type GetApiV1ModelsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9074,10 +10299,11 @@ export type GetApiV1ModelsResponses = {
      * Successful response
      */
     200: {
-        data?: {
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
             models: Array<Model>;
-            total?: number;
-            [key: string]: unknown;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -9113,6 +10339,12 @@ export type PostApiV1ModelsData = {
         id: string;
         providerId: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/models';
@@ -9120,13 +10352,9 @@ export type PostApiV1ModelsData = {
 
 export type PostApiV1ModelsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -9135,14 +10363,6 @@ export type PostApiV1ModelsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9160,7 +10380,7 @@ export type PostApiV1ModelsResponses = {
      * Successful response
      */
     200: {
-        data?: Model;
+        data: Model;
         message?: string;
         success: true;
         timestamp: string;
@@ -9181,13 +10401,9 @@ export type GetApiV1ModelsByProviderIdByModelIdData = {
 
 export type GetApiV1ModelsByProviderIdByModelIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -9200,10 +10416,6 @@ export type GetApiV1ModelsByProviderIdByModelIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9221,9 +10433,7 @@ export type GetApiV1ModelsByProviderIdByModelIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: Model;
         message?: string;
         success: true;
         timestamp: string;
@@ -9266,13 +10476,9 @@ export type PatchApiV1ModelsByProviderIdByModelIdData = {
 
 export type PatchApiV1ModelsByProviderIdByModelIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -9285,10 +10491,6 @@ export type PatchApiV1ModelsByProviderIdByModelIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9306,9 +10508,7 @@ export type PatchApiV1ModelsByProviderIdByModelIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: Model;
         message?: string;
         success: true;
         timestamp: string;
@@ -9332,13 +10532,9 @@ export type GetApiV1NotificationsData = {
 
 export type GetApiV1NotificationsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -9347,14 +10543,6 @@ export type GetApiV1NotificationsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9372,9 +10560,7 @@ export type GetApiV1NotificationsResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: Array<Notification>;
         message?: string;
         success: true;
         timestamp: string;
@@ -9394,13 +10580,9 @@ export type GetApiV1NotificationsSettingsData = {
 
 export type GetApiV1NotificationsSettingsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -9409,14 +10591,6 @@ export type GetApiV1NotificationsSettingsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9434,9 +10608,7 @@ export type GetApiV1NotificationsSettingsResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: NotificationSettings;
         message?: string;
         success: true;
         timestamp: string;
@@ -9503,13 +10675,9 @@ export type PatchApiV1NotificationsSettingsData = {
 
 export type PatchApiV1NotificationsSettingsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -9518,14 +10686,6 @@ export type PatchApiV1NotificationsSettingsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9543,9 +10703,7 @@ export type PatchApiV1NotificationsSettingsResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: NotificationSettings;
         message?: string;
         success: true;
         timestamp: string;
@@ -9563,10 +10721,6 @@ export type GetApiV1NotificationsUnreadCountData = {
 
 export type GetApiV1NotificationsUnreadCountErrors = {
     /**
-     * Invalid request
-     */
-    400: ApiError;
-    /**
      * Authentication required
      */
     401: ApiError;
@@ -9574,14 +10728,6 @@ export type GetApiV1NotificationsUnreadCountErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9599,9 +10745,7 @@ export type GetApiV1NotificationsUnreadCountResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: NotificationUnreadCount;
         message?: string;
         success: true;
         timestamp: string;
@@ -9619,10 +10763,6 @@ export type GetApiV1NotificationsCountsData = {
 
 export type GetApiV1NotificationsCountsErrors = {
     /**
-     * Invalid request
-     */
-    400: ApiError;
-    /**
      * Authentication required
      */
     401: ApiError;
@@ -9630,14 +10770,6 @@ export type GetApiV1NotificationsCountsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9655,9 +10787,7 @@ export type GetApiV1NotificationsCountsResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: Array<NotificationCategoryCount>;
         message?: string;
         success: true;
         timestamp: string;
@@ -9670,6 +10800,12 @@ export type PostApiV1NotificationsReadData = {
     body: {
         ids: Array<string>;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/notifications/read';
@@ -9677,13 +10813,9 @@ export type PostApiV1NotificationsReadData = {
 
 export type PostApiV1NotificationsReadErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -9692,14 +10824,6 @@ export type PostApiV1NotificationsReadErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9717,10 +10841,7 @@ export type PostApiV1NotificationsReadResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
-        message?: string;
+        message: string;
         success: true;
         timestamp: string;
     };
@@ -9730,16 +10851,18 @@ export type PostApiV1NotificationsReadResponse = PostApiV1NotificationsReadRespo
 
 export type PostApiV1NotificationsReadAllData = {
     body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/notifications/read-all';
 };
 
 export type PostApiV1NotificationsReadAllErrors = {
-    /**
-     * Invalid request
-     */
-    400: ApiError;
     /**
      * Authentication required
      */
@@ -9748,14 +10871,6 @@ export type PostApiV1NotificationsReadAllErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9773,10 +10888,7 @@ export type PostApiV1NotificationsReadAllResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
-        message?: string;
+        message: string;
         success: true;
         timestamp: string;
     };
@@ -9786,16 +10898,18 @@ export type PostApiV1NotificationsReadAllResponse = PostApiV1NotificationsReadAl
 
 export type PostApiV1NotificationsArchiveAllData = {
     body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/notifications/archive-all';
 };
 
 export type PostApiV1NotificationsArchiveAllErrors = {
-    /**
-     * Invalid request
-     */
-    400: ApiError;
     /**
      * Authentication required
      */
@@ -9804,14 +10918,6 @@ export type PostApiV1NotificationsArchiveAllErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9829,10 +10935,7 @@ export type PostApiV1NotificationsArchiveAllResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
-        message?: string;
+        message: string;
         success: true;
         timestamp: string;
     };
@@ -9842,6 +10945,12 @@ export type PostApiV1NotificationsArchiveAllResponse = PostApiV1NotificationsArc
 
 export type PostApiV1NotificationsByIdArchiveData = {
     body?: never;
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -9851,13 +10960,9 @@ export type PostApiV1NotificationsByIdArchiveData = {
 
 export type PostApiV1NotificationsByIdArchiveErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -9866,14 +10971,6 @@ export type PostApiV1NotificationsByIdArchiveErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9891,10 +10988,7 @@ export type PostApiV1NotificationsByIdArchiveResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
-        message?: string;
+        message: string;
         success: true;
         timestamp: string;
     };
@@ -9908,22 +11002,36 @@ export type GetApiV1PermissionsData = {
     query?: {
         active?: string | null;
         category?: string | null;
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
     };
     url: '/api/v1/permissions';
 };
 
 export type GetApiV1PermissionsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -9932,14 +11040,6 @@ export type GetApiV1PermissionsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -9957,11 +11057,7 @@ export type GetApiV1PermissionsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            permissions: Array<Permission>;
-            total?: number;
-            [key: string]: unknown;
-        };
+        data: PermissionList;
         message?: string;
         success: true;
         timestamp: string;
@@ -9978,6 +11074,12 @@ export type PostApiV1PermissionsData = {
         isActive?: boolean | null;
         name: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/permissions';
@@ -9985,13 +11087,9 @@ export type PostApiV1PermissionsData = {
 
 export type PostApiV1PermissionsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10000,14 +11098,6 @@ export type PostApiV1PermissionsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10025,7 +11115,7 @@ export type PostApiV1PermissionsResponses = {
      * Successful response
      */
     200: {
-        data?: Permission;
+        data: Permission;
         message?: string;
         success: true;
         timestamp: string;
@@ -10045,13 +11135,9 @@ export type DeleteApiV1PermissionsByIdData = {
 
 export type DeleteApiV1PermissionsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10064,10 +11150,6 @@ export type DeleteApiV1PermissionsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10085,9 +11167,7 @@ export type DeleteApiV1PermissionsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -10107,13 +11187,9 @@ export type GetApiV1PermissionsByIdData = {
 
 export type GetApiV1PermissionsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10126,10 +11202,6 @@ export type GetApiV1PermissionsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10147,7 +11219,7 @@ export type GetApiV1PermissionsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Permission;
+        data: Permission;
         message?: string;
         success: true;
         timestamp: string;
@@ -10173,13 +11245,9 @@ export type PatchApiV1PermissionsByIdData = {
 
 export type PatchApiV1PermissionsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10192,10 +11260,6 @@ export type PatchApiV1PermissionsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10213,7 +11277,7 @@ export type PatchApiV1PermissionsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Permission;
+        data: Permission;
         message?: string;
         success: true;
         timestamp: string;
@@ -10226,9 +11290,27 @@ export type GetApiV1ProvidersData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
         enabled?: boolean;
     };
     url: '/api/v1/providers';
@@ -10236,13 +11318,9 @@ export type GetApiV1ProvidersData = {
 
 export type GetApiV1ProvidersErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10251,14 +11329,6 @@ export type GetApiV1ProvidersErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10276,10 +11346,11 @@ export type GetApiV1ProvidersResponses = {
      * Successful response
      */
     200: {
-        data?: {
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
             providers: Array<Provider>;
-            total?: number;
-            [key: string]: unknown;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -10310,6 +11381,12 @@ export type PostApiV1ProvidersData = {
         source?: 'builtin' | 'custom';
         id: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/providers';
@@ -10317,13 +11394,9 @@ export type PostApiV1ProvidersData = {
 
 export type PostApiV1ProvidersErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10332,14 +11405,6 @@ export type PostApiV1ProvidersErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10357,7 +11422,7 @@ export type PostApiV1ProvidersResponses = {
      * Successful response
      */
     200: {
-        data?: Provider;
+        data: Provider;
         message?: string;
         success: true;
         timestamp: string;
@@ -10377,13 +11442,9 @@ export type DeleteApiV1ProvidersByIdData = {
 
 export type DeleteApiV1ProvidersByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10396,10 +11457,6 @@ export type DeleteApiV1ProvidersByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10417,9 +11474,7 @@ export type DeleteApiV1ProvidersByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -10439,13 +11494,9 @@ export type GetApiV1ProvidersByIdData = {
 
 export type GetApiV1ProvidersByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10458,10 +11509,6 @@ export type GetApiV1ProvidersByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10479,7 +11526,7 @@ export type GetApiV1ProvidersByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Provider;
+        data: Provider;
         message?: string;
         success: true;
         timestamp: string;
@@ -10517,13 +11564,9 @@ export type PatchApiV1ProvidersByIdData = {
 
 export type PatchApiV1ProvidersByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10536,10 +11579,6 @@ export type PatchApiV1ProvidersByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10557,7 +11596,7 @@ export type PatchApiV1ProvidersByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Provider;
+        data: Provider;
         message?: string;
         success: true;
         timestamp: string;
@@ -10579,13 +11618,9 @@ export type DeleteApiV1PushTokensByDeviceIdData = {
 
 export type DeleteApiV1PushTokensByDeviceIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10594,14 +11629,6 @@ export type DeleteApiV1PushTokensByDeviceIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10619,7 +11646,7 @@ export type DeleteApiV1PushTokensByDeviceIdResponses = {
      * Successful response
      */
     200: {
-        data?: null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -10644,13 +11671,9 @@ export type PutApiV1PushTokensByDeviceIdData = {
 
 export type PutApiV1PushTokensByDeviceIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10659,14 +11682,6 @@ export type PutApiV1PushTokensByDeviceIdErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10684,10 +11699,7 @@ export type PutApiV1PushTokensByDeviceIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            deviceId: string;
-            platform: string;
-        };
+        data: PushTokenRegistration;
         message?: string;
         success: true;
         timestamp: string;
@@ -10773,6 +11785,12 @@ export type PostApiV1ResponsesData = {
         user?: string | null;
         [key: string]: unknown;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/responses';
@@ -10780,37 +11798,65 @@ export type PostApiV1ResponsesData = {
 
 export type PostApiV1ResponsesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
     400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
+        error: {
+            code: 'bad_request' | 'conflict' | 'forbidden' | 'idempotency_conflict' | 'insufficient_scope' | 'internal_error' | 'not_found' | 'payload_too_large' | 'payment_required' | 'precondition_failed' | 'rate_limited' | 'service_unavailable' | 'unauthorized' | 'unprocessable_entity' | 'upstream_error' | 'validation_error' | 'workspace_mismatch';
+            message: string;
+            param: string | null;
+            type: 'invalid_request_error' | 'not_found' | 'rate_limit_error' | 'server_error';
+        };
+        requestId: string;
     };
     /**
      * Authentication required
      */
-    401: ApiError;
+    401: {
+        error: {
+            code: 'bad_request' | 'conflict' | 'forbidden' | 'idempotency_conflict' | 'insufficient_scope' | 'internal_error' | 'not_found' | 'payload_too_large' | 'payment_required' | 'precondition_failed' | 'rate_limited' | 'service_unavailable' | 'unauthorized' | 'unprocessable_entity' | 'upstream_error' | 'validation_error' | 'workspace_mismatch';
+            message: string;
+            param: string | null;
+            type: 'invalid_request_error' | 'not_found' | 'rate_limit_error' | 'server_error';
+        };
+        requestId: string;
+    };
     /**
      * Insufficient permission
      */
-    403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
+    403: {
+        error: {
+            code: 'bad_request' | 'conflict' | 'forbidden' | 'idempotency_conflict' | 'insufficient_scope' | 'internal_error' | 'not_found' | 'payload_too_large' | 'payment_required' | 'precondition_failed' | 'rate_limited' | 'service_unavailable' | 'unauthorized' | 'unprocessable_entity' | 'upstream_error' | 'validation_error' | 'workspace_mismatch';
+            message: string;
+            param: string | null;
+            type: 'invalid_request_error' | 'not_found' | 'rate_limit_error' | 'server_error';
+        };
+        requestId: string;
+    };
     /**
      * Rate limit exceeded
      */
-    429: ApiError;
+    429: {
+        error: {
+            code: 'bad_request' | 'conflict' | 'forbidden' | 'idempotency_conflict' | 'insufficient_scope' | 'internal_error' | 'not_found' | 'payload_too_large' | 'payment_required' | 'precondition_failed' | 'rate_limited' | 'service_unavailable' | 'unauthorized' | 'unprocessable_entity' | 'upstream_error' | 'validation_error' | 'workspace_mismatch';
+            message: string;
+            param: string | null;
+            type: 'invalid_request_error' | 'not_found' | 'rate_limit_error' | 'server_error';
+        };
+        requestId: string;
+    };
     /**
      * Internal server error
      */
-    500: ApiError;
+    500: {
+        error: {
+            code: 'bad_request' | 'conflict' | 'forbidden' | 'idempotency_conflict' | 'insufficient_scope' | 'internal_error' | 'not_found' | 'payload_too_large' | 'payment_required' | 'precondition_failed' | 'rate_limited' | 'service_unavailable' | 'unauthorized' | 'unprocessable_entity' | 'upstream_error' | 'validation_error' | 'workspace_mismatch';
+            message: string;
+            param: string | null;
+            type: 'invalid_request_error' | 'not_found' | 'rate_limit_error' | 'server_error';
+        };
+        requestId: string;
+    };
 };
 
 export type PostApiV1ResponsesError = PostApiV1ResponsesErrors[keyof PostApiV1ResponsesErrors];
@@ -10819,18 +11865,7 @@ export type PostApiV1ResponsesResponses = {
     /**
      * Successful response
      */
-    200: {
-        id: string;
-        object: 'response';
-        output: Array<{
-            [key: string]: unknown;
-        }>;
-        status: string;
-        usage?: {
-            [key: string]: unknown;
-        } | null;
-        [key: string]: unknown;
-    };
+    200: ResponseObject;
 };
 
 export type PostApiV1ResponsesResponse = PostApiV1ResponsesResponses[keyof PostApiV1ResponsesResponses];
@@ -10841,22 +11876,36 @@ export type GetApiV1RolesData = {
     query?: {
         active?: string | null;
         system?: string | null;
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
     };
     url: '/api/v1/roles';
 };
 
 export type GetApiV1RolesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10865,14 +11914,6 @@ export type GetApiV1RolesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10890,11 +11931,7 @@ export type GetApiV1RolesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            roles: Array<Role>;
-            total?: number;
-            [key: string]: unknown;
-        };
+        data: RoleList;
         message?: string;
         success: true;
         timestamp: string;
@@ -10911,6 +11948,12 @@ export type PostApiV1RolesData = {
         isSystem?: boolean | null;
         name: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/roles';
@@ -10918,13 +11961,9 @@ export type PostApiV1RolesData = {
 
 export type PostApiV1RolesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10933,14 +11972,6 @@ export type PostApiV1RolesErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -10958,7 +11989,7 @@ export type PostApiV1RolesResponses = {
      * Successful response
      */
     200: {
-        data?: Role;
+        data: Role;
         message?: string;
         success: true;
         timestamp: string;
@@ -10978,13 +12009,9 @@ export type DeleteApiV1RolesByIdData = {
 
 export type DeleteApiV1RolesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -10997,10 +12024,6 @@ export type DeleteApiV1RolesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11018,9 +12041,7 @@ export type DeleteApiV1RolesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -11040,13 +12061,9 @@ export type GetApiV1RolesByIdData = {
 
 export type GetApiV1RolesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11059,10 +12076,6 @@ export type GetApiV1RolesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11080,7 +12093,7 @@ export type GetApiV1RolesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Role;
+        data: Role;
         message?: string;
         success: true;
         timestamp: string;
@@ -11106,13 +12119,9 @@ export type PatchApiV1RolesByIdData = {
 
 export type PatchApiV1RolesByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11125,10 +12134,6 @@ export type PatchApiV1RolesByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11146,7 +12151,7 @@ export type PatchApiV1RolesByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Role;
+        data: Role;
         message?: string;
         success: true;
         timestamp: string;
@@ -11166,13 +12171,9 @@ export type DeleteApiV1RolesByIdPermissionsData = {
 
 export type DeleteApiV1RolesByIdPermissionsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11185,10 +12186,6 @@ export type DeleteApiV1RolesByIdPermissionsErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11206,9 +12203,7 @@ export type DeleteApiV1RolesByIdPermissionsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResources;
         message?: string;
         success: true;
         timestamp: string;
@@ -11223,22 +12218,36 @@ export type GetApiV1RolesByIdPermissionsData = {
         id: string;
     };
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
     };
     url: '/api/v1/roles/{id}/permissions';
 };
 
 export type GetApiV1RolesByIdPermissionsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11247,14 +12256,6 @@ export type GetApiV1RolesByIdPermissionsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11272,9 +12273,7 @@ export type GetApiV1RolesByIdPermissionsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: RolePermissionList;
         message?: string;
         success: true;
         timestamp: string;
@@ -11297,13 +12296,9 @@ export type PatchApiV1RolesByIdPermissionsData = {
 
 export type PatchApiV1RolesByIdPermissionsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11316,10 +12311,6 @@ export type PatchApiV1RolesByIdPermissionsErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11337,9 +12328,7 @@ export type PatchApiV1RolesByIdPermissionsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: RolePermissionsUpdateResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -11358,6 +12347,12 @@ export type PostApiV1SignalsSourceEventsData = {
         sourceType: 'client.gateway.error' | 'client.gateway.runtime_end' | 'client.gateway.step_complete' | 'client.gateway.stream_start' | 'client.runtime.complete' | 'client.runtime.start';
         timestamp?: number;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/signals/source-events';
@@ -11365,13 +12360,9 @@ export type PostApiV1SignalsSourceEventsData = {
 
 export type PostApiV1SignalsSourceEventsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11384,10 +12375,6 @@ export type PostApiV1SignalsSourceEventsErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11405,9 +12392,7 @@ export type PostApiV1SignalsSourceEventsResponses = {
      * Successful response
      */
     202: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: AgentSignalEmission;
         message?: string;
         success: true;
         timestamp: string;
@@ -11428,6 +12413,12 @@ export type PostApiV1SignalsTriggerData = {
         timestamp?: number;
         topicId?: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/signals/trigger';
@@ -11435,13 +12426,9 @@ export type PostApiV1SignalsTriggerData = {
 
 export type PostApiV1SignalsTriggerErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11454,10 +12441,6 @@ export type PostApiV1SignalsTriggerErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11475,9 +12458,7 @@ export type PostApiV1SignalsTriggerResponses = {
      * Successful response
      */
     202: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: AgentSignalEmission;
         message?: string;
         success: true;
         timestamp: string;
@@ -11501,13 +12482,9 @@ export type GetApiV1SignalsReceiptsData = {
 
 export type GetApiV1SignalsReceiptsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11516,14 +12493,6 @@ export type GetApiV1SignalsReceiptsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11541,9 +12510,7 @@ export type GetApiV1SignalsReceiptsResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: AgentSignalReceiptList;
         message?: string;
         success: true;
         timestamp: string;
@@ -11557,7 +12524,19 @@ export type GetApiV1TasksData = {
     path?: never;
     query?: {
         assigneeAgentId?: string;
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         offset?: number;
         projectId?: string;
         statuses?: string;
@@ -11567,13 +12546,9 @@ export type GetApiV1TasksData = {
 
 export type GetApiV1TasksErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11582,14 +12557,6 @@ export type GetApiV1TasksErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11607,9 +12574,7 @@ export type GetApiV1TasksResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: TaskList;
         message?: string;
         success: true;
         timestamp: string;
@@ -11637,6 +12602,12 @@ export type PostApiV1TasksData = {
         scheduleTimezone?: string;
         visibility?: 'private' | 'public';
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/tasks';
@@ -11644,13 +12615,9 @@ export type PostApiV1TasksData = {
 
 export type PostApiV1TasksErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11664,9 +12631,9 @@ export type PostApiV1TasksErrors = {
      */
     404: ApiError;
     /**
-     * Resource conflict
+     * Precondition failed
      */
-    409: ApiError;
+    412: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11684,9 +12651,7 @@ export type PostApiV1TasksResponses = {
      * Successful response
      */
     201: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: Task;
         message?: string;
         success: true;
         timestamp: string;
@@ -11706,13 +12671,9 @@ export type DeleteApiV1TasksByIdData = {
 
 export type DeleteApiV1TasksByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11746,9 +12707,7 @@ export type DeleteApiV1TasksByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -11768,13 +12727,9 @@ export type GetApiV1TasksByIdData = {
 
 export type GetApiV1TasksByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11787,10 +12742,6 @@ export type GetApiV1TasksByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -11808,9 +12759,7 @@ export type GetApiV1TasksByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: TaskDetail;
         message?: string;
         success: true;
         timestamp: string;
@@ -11833,6 +12782,7 @@ export type PatchApiV1TasksByIdData = {
         name?: string;
         parentTaskId?: string | null;
         priority?: number;
+        projectId?: string | null;
         schedulePattern?: string | null;
         scheduleTimezone?: string | null;
     };
@@ -11845,13 +12795,9 @@ export type PatchApiV1TasksByIdData = {
 
 export type PatchApiV1TasksByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11869,6 +12815,10 @@ export type PatchApiV1TasksByIdErrors = {
      */
     409: ApiError;
     /**
+     * Precondition failed
+     */
+    412: ApiError;
+    /**
      * Rate limit exceeded
      */
     429: ApiError;
@@ -11885,9 +12835,7 @@ export type PatchApiV1TasksByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: Task;
         message?: string;
         success: true;
         timestamp: string;
@@ -11910,13 +12858,9 @@ export type PatchApiV1TasksByIdStatusData = {
 
 export type PatchApiV1TasksByIdStatusErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11950,9 +12894,7 @@ export type PatchApiV1TasksByIdStatusResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: TaskStatusUpdateResult;
         message?: string;
         success: true;
         timestamp: string;
@@ -11974,13 +12916,9 @@ export type GetApiV1TasksByIdRunsData = {
 
 export type GetApiV1TasksByIdRunsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -11993,10 +12931,6 @@ export type GetApiV1TasksByIdRunsErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12014,9 +12948,7 @@ export type GetApiV1TasksByIdRunsResponses = {
      * Successful response
      */
     200: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: Array<TaskRun>;
         message?: string;
         success: true;
         timestamp: string;
@@ -12029,6 +12961,12 @@ export type PostApiV1TasksByIdRunsData = {
     body: {
         prompt?: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path: {
         id: string;
     };
@@ -12038,13 +12976,9 @@ export type PostApiV1TasksByIdRunsData = {
 
 export type PostApiV1TasksByIdRunsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12061,6 +12995,10 @@ export type PostApiV1TasksByIdRunsErrors = {
      * Resource conflict
      */
     409: ApiError;
+    /**
+     * Precondition failed
+     */
+    412: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12078,9 +13016,7 @@ export type PostApiV1TasksByIdRunsResponses = {
      * Successful response
      */
     202: {
-        data?: Array<unknown> | {
-            [key: string]: unknown;
-        } | null;
+        data: TaskRunStarted;
         message?: string;
         success: true;
         timestamp: string;
@@ -12098,22 +13034,36 @@ export type GetApiV1TopicsData = {
         groupId?: string | null;
         includeTriggers?: Array<string>;
         isInbox?: string;
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
     };
     url: '/api/v1/topics';
 };
 
 export type GetApiV1TopicsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12122,14 +13072,6 @@ export type GetApiV1TopicsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12147,10 +13089,11 @@ export type GetApiV1TopicsResponses = {
      * Successful response
      */
     200: {
-        data?: {
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
             topics: Array<Topic>;
-            total?: number;
-            [key: string]: unknown;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -12168,6 +13111,12 @@ export type PostApiV1TopicsData = {
         groupId?: string | null;
         title: string;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/topics';
@@ -12175,13 +13124,9 @@ export type PostApiV1TopicsData = {
 
 export type PostApiV1TopicsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12190,14 +13135,6 @@ export type PostApiV1TopicsErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12215,7 +13152,7 @@ export type PostApiV1TopicsResponses = {
      * Successful response
      */
     200: {
-        data?: Topic;
+        data: Topic;
         message?: string;
         success: true;
         timestamp: string;
@@ -12235,13 +13172,9 @@ export type DeleteApiV1TopicsByIdData = {
 
 export type DeleteApiV1TopicsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12254,10 +13187,6 @@ export type DeleteApiV1TopicsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12275,9 +13204,7 @@ export type DeleteApiV1TopicsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -12297,13 +13224,9 @@ export type GetApiV1TopicsByIdData = {
 
 export type GetApiV1TopicsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12316,10 +13239,6 @@ export type GetApiV1TopicsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12337,7 +13256,7 @@ export type GetApiV1TopicsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Topic;
+        data: Topic;
         message?: string;
         success: true;
         timestamp: string;
@@ -12367,13 +13286,9 @@ export type PatchApiV1TopicsByIdData = {
 
 export type PatchApiV1TopicsByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12386,10 +13301,6 @@ export type PatchApiV1TopicsByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12407,7 +13318,7 @@ export type PatchApiV1TopicsByIdResponses = {
      * Successful response
      */
     200: {
-        data?: Topic;
+        data: Topic;
         message?: string;
         success: true;
         timestamp: string;
@@ -12422,9 +13333,31 @@ export type GetApiV1TopicsByTopicIdThreadsData = {
         topicId: string;
     };
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
         limit?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         offset?: number;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
         page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
         pageSize?: number;
     };
     url: '/api/v1/topics/{topicId}/threads';
@@ -12432,13 +13365,9 @@ export type GetApiV1TopicsByTopicIdThreadsData = {
 
 export type GetApiV1TopicsByTopicIdThreadsErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12451,10 +13380,6 @@ export type GetApiV1TopicsByTopicIdThreadsErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12472,18 +13397,11 @@ export type GetApiV1TopicsByTopicIdThreadsResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            threads: Array<{
-                id?: string;
-                topicId?: string;
-                title?: string | null;
-                type?: string;
-                status?: string | null;
-                parentThreadId?: string | null;
-                createdAt?: string;
-                updatedAt?: string;
-            }>;
-            total: number;
+        data: {
+            hasMore: PageHasMore;
+            nextCursor: PageNextCursor;
+            threads: Array<TopicThread>;
+            total: PageTotal;
         };
         message?: string;
         success: true;
@@ -12502,10 +13420,6 @@ export type GetApiV1UsersMeData = {
 
 export type GetApiV1UsersMeErrors = {
     /**
-     * Invalid request
-     */
-    400: ApiError;
-    /**
      * Authentication required
      */
     401: ApiError;
@@ -12517,10 +13431,6 @@ export type GetApiV1UsersMeErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12538,9 +13448,7 @@ export type GetApiV1UsersMeResponses = {
      * Successful response
      */
     200: {
-        data?: User | {
-            id: string;
-        };
+        data: User | UserIdentity;
         message?: string;
         success: true;
         timestamp: string;
@@ -12553,22 +13461,36 @@ export type GetApiV1UsersData = {
     body?: never;
     path?: never;
     query?: {
+        /**
+         * Opaque cursor from the previous page's `nextCursor`. Omit for the first page.
+         */
+        cursor?: string;
+        /**
+         * Page size, 1–100. Defaults to 20.
+         */
+        limit?: number;
         keyword?: string;
-        page?: string;
-        pageSize?: string;
+        /**
+         * Deprecated: use `cursor` instead.
+         *
+         * @deprecated
+         */
+        page?: number;
+        /**
+         * Deprecated: use `limit` instead.
+         *
+         * @deprecated
+         */
+        pageSize?: number;
     };
     url: '/api/v1/users';
 };
 
 export type GetApiV1UsersErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12577,14 +13499,6 @@ export type GetApiV1UsersErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12602,11 +13516,7 @@ export type GetApiV1UsersResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            users: Array<User>;
-            total?: number;
-            [key: string]: unknown;
-        };
+        data: UserList;
         message?: string;
         success: true;
         timestamp: string;
@@ -12627,6 +13537,12 @@ export type PostApiV1UsersData = {
         roleIds?: Array<string> | null;
         username?: string | null;
     };
+    headers?: {
+        /**
+         * Makes the request safe to retry: the first request with a key runs, and repeats with the same key and the same request within 24 hours get its stored response back (with `Idempotent-Replayed: true`). A repeat while the first is still running answers 409, and reusing a key for a different request (method, path or body) answers 422 (both `idempotency_conflict`). Server errors, 429s and streamed responses are not stored. Keys are scoped to the authenticated user, the credential (API key) and the resolved workspace. A request still running after 5 minutes releases its in-flight claim, after which a retry with the same key runs again.
+         */
+        'Idempotency-Key'?: string;
+    };
     path?: never;
     query?: never;
     url: '/api/v1/users';
@@ -12634,13 +13550,9 @@ export type PostApiV1UsersData = {
 
 export type PostApiV1UsersErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12649,14 +13561,6 @@ export type PostApiV1UsersErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12674,7 +13578,7 @@ export type PostApiV1UsersResponses = {
      * Successful response
      */
     200: {
-        data?: User;
+        data: User;
         message?: string;
         success: true;
         timestamp: string;
@@ -12694,13 +13598,9 @@ export type DeleteApiV1UsersByIdData = {
 
 export type DeleteApiV1UsersByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12713,10 +13613,6 @@ export type DeleteApiV1UsersByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12734,9 +13630,7 @@ export type DeleteApiV1UsersByIdResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResource;
         message?: string;
         success: true;
         timestamp: string;
@@ -12756,13 +13650,9 @@ export type GetApiV1UsersByIdData = {
 
 export type GetApiV1UsersByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12775,10 +13665,6 @@ export type GetApiV1UsersByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12796,7 +13682,7 @@ export type GetApiV1UsersByIdResponses = {
      * Successful response
      */
     200: {
-        data?: User;
+        data: User;
         message?: string;
         success: true;
         timestamp: string;
@@ -12827,13 +13713,9 @@ export type PatchApiV1UsersByIdData = {
 
 export type PatchApiV1UsersByIdErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12846,10 +13728,6 @@ export type PatchApiV1UsersByIdErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12867,7 +13745,7 @@ export type PatchApiV1UsersByIdResponses = {
      * Successful response
      */
     200: {
-        data?: User;
+        data: User;
         message?: string;
         success: true;
         timestamp: string;
@@ -12887,13 +13765,9 @@ export type DeleteApiV1UsersByIdRolesData = {
 
 export type DeleteApiV1UsersByIdRolesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12906,10 +13780,6 @@ export type DeleteApiV1UsersByIdRolesErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12927,9 +13797,7 @@ export type DeleteApiV1UsersByIdRolesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        } | null;
+        data: DeletedResources;
         message?: string;
         success: true;
         timestamp: string;
@@ -12949,13 +13817,9 @@ export type GetApiV1UsersByIdRolesData = {
 
 export type GetApiV1UsersByIdRolesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -12968,10 +13832,6 @@ export type GetApiV1UsersByIdRolesErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -12989,9 +13849,7 @@ export type GetApiV1UsersByIdRolesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: Array<UserRole>;
         message?: string;
         success: true;
         timestamp: string;
@@ -13017,13 +13875,9 @@ export type PatchApiV1UsersByIdRolesData = {
 
 export type PatchApiV1UsersByIdRolesErrors = {
     /**
-     * Validation Error
+     * Invalid request
      */
-    400: {
-        success: false;
-        error: Array<unknown>;
-        data: unknown;
-    };
+    400: ApiError;
     /**
      * Authentication required
      */
@@ -13036,10 +13890,6 @@ export type PatchApiV1UsersByIdRolesErrors = {
      * Resource not found
      */
     404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -13057,9 +13907,7 @@ export type PatchApiV1UsersByIdRolesResponses = {
      * Successful response
      */
     200: {
-        data?: {
-            [key: string]: unknown;
-        };
+        data: Array<UserRole>;
         message?: string;
         success: true;
         timestamp: string;
@@ -13077,10 +13925,6 @@ export type GetApiV1UsageData = {
 
 export type GetApiV1UsageErrors = {
     /**
-     * Invalid request
-     */
-    400: ApiError;
-    /**
      * Authentication required
      */
     401: ApiError;
@@ -13088,14 +13932,6 @@ export type GetApiV1UsageErrors = {
      * Insufficient permission
      */
     403: ApiError;
-    /**
-     * Resource not found
-     */
-    404: ApiError;
-    /**
-     * Resource conflict
-     */
-    409: ApiError;
     /**
      * Rate limit exceeded
      */
@@ -13113,7 +13949,7 @@ export type GetApiV1UsageResponses = {
      * Successful response
      */
     200: {
-        data?: Usage;
+        data: Usage;
         message?: string;
         success: true;
         timestamp: string;

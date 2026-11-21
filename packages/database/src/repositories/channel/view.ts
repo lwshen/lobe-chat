@@ -1,29 +1,61 @@
-import { channelMessageReceipt, channelMessageVia } from '@lobechat/types';
-import { and, asc, count, desc, eq, getTableColumns, inArray, isNull, lt, sql } from 'drizzle-orm';
+import {
+  type AgentDeviceOverride,
+  channelMessageDeletedAt,
+  channelMessageEditedAt,
+  channelMessageReceipt,
+  channelMessageVia,
+  type ChatMessageError,
+  contactCardOf,
+  defaultChannelAgentDirectory,
+  type LobeAgentAgencyConfig,
+  resolveAgentAgencyConfig,
+} from '@lobechat/types';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  getTableColumns,
+  inArray,
+  isNotNull,
+  isNull,
+  like,
+  lt,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 
+import { sanitizeVisitorError } from '../../models/message/visitor';
 import {
   agentOperations,
   agents,
   channelJobs,
   channelMembers,
   channelMessages,
+  channels,
   channelThreads,
+  devices,
   files as fileTable,
   topics,
   users,
+  workspaceUserSettings,
 } from '../../schemas';
 import type { Transaction } from '../../type';
+import { agentAvatarSql, agentTitleSql } from '../../utils/inboxAgent';
 import { notTrashed } from '../../utils/softDelete';
 import { fileIdsByMessage } from './attachments';
+import { isAgentAuthored } from './author';
 import { activeMembers } from './delivery';
 import { ChannelError } from './error';
 import { externalWorksByMessage } from './works';
 
-const publicMessageColumns = {
+export const publicMessageColumns = {
   ...getTableColumns(channelMessages),
-  senderAgentAvatar: agents.avatar,
+  senderAgentAvatar: agentAvatarSql(),
   senderAgentName: agents.name,
-  senderAgentTitle: agents.title,
+  senderAgentTitle: agentTitleSql(),
   senderUserAvatar: users.avatar,
   senderUserName: users.fullName,
   senderUsername: users.username,
@@ -38,7 +70,7 @@ type MessageRow = typeof channelMessages.$inferSelect & {
   senderUsername: string | null;
 };
 
-const publicMessage = (row: MessageRow, fileIds: string[]) => {
+export const publicMessage = (row: MessageRow, fileIds: string[]) => {
   const {
     senderAgentAvatar,
     senderAgentName,
@@ -48,7 +80,7 @@ const publicMessage = (row: MessageRow, fileIds: string[]) => {
     senderUsername,
     ...message
   } = row;
-  const isAgent = message.routingStatus === 'reply';
+  const isAgent = isAgentAuthored(message);
   return {
     ...message,
     fileIds,
@@ -58,7 +90,16 @@ const publicMessage = (row: MessageRow, fileIds: string[]) => {
       name: isAgent ? senderAgentName || senderAgentTitle : senderUserName || senderUsername,
       type: isAgent ? ('agent' as const) : ('user' as const),
     },
-    receipt: isAgent ? null : (channelMessageReceipt(message.metadata) ?? null),
+    card: contactCardOf(message.metadata) ?? null,
+    deletedAt: channelMessageDeletedAt(message.metadata),
+    editedAt: channelMessageEditedAt(message.metadata),
+    // On an Agent's message, the exchange between Agents it reports from.
+    receipt: (() => {
+      const receipt = channelMessageReceipt(message.metadata);
+      if (!receipt) return null;
+      const { agent, ...rest } = receipt;
+      return { ...rest, agent: agent && { ...agent, avatar: null as string | null } };
+    })(),
     via: isAgent
       ? null
       : (() => {
@@ -69,33 +110,50 @@ const publicMessage = (row: MessageRow, fileIds: string[]) => {
 };
 
 /**
- * Avatars of the Agents named in `via`, which usually are not members of this Channel. An Agent
- * deleted since keeps the name the message recorded, without an avatar.
+ * Avatars of the Agents named in `via` or in a report's `receipt.agent`, which usually are not
+ * members of this Channel. An Agent deleted since keeps the name the message recorded, without
+ * an avatar.
  */
 const relayAgentAvatars = async (tx: Transaction, rows: MessageRow[]) => {
   const ids = [
     ...new Set(
       rows.flatMap((row) => {
         const via = row.routingStatus === 'reply' ? undefined : channelMessageVia(row.metadata);
-        return via ? [via.agentId] : [];
+        const reported = channelMessageReceipt(row.metadata)?.agent;
+        return [...(via ? [via.agentId] : []), ...(reported ? [reported.agentId] : [])];
       }),
     ),
   ];
   if (!ids.length) return new Map<string, string | null>();
   const found = await tx
-    .select({ avatar: agents.avatar, id: agents.id })
+    .select({ avatar: agentAvatarSql(), id: agents.id })
     .from(agents)
     .where(inArray(agents.id, ids));
   return new Map(found.map(({ avatar, id }) => [id, avatar] as const));
 };
 
-const withRelayAvatar = <T extends { via?: { agentId: string; avatar: string | null } | null }>(
+type AvatarAgent = { agentId: string; avatar: string | null };
+const withRelayAvatar = <
+  T extends {
+    receipt?: { agent?: AvatarAgent } | null;
+    via?: AvatarAgent | null;
+  },
+>(
   message: T,
   avatars: Map<string, string | null>,
-): T =>
-  message.via
-    ? { ...message, via: { ...message.via, avatar: avatars.get(message.via.agentId) ?? null } }
-    : message;
+): T => {
+  const avatarOf = <A extends AvatarAgent>(agent: A): A => ({
+    ...agent,
+    avatar: avatars.get(agent.agentId) ?? null,
+  });
+  return {
+    ...message,
+    ...(message.via && { via: avatarOf(message.via) }),
+    ...(message.receipt?.agent && {
+      receipt: { ...message.receipt, agent: avatarOf(message.receipt.agent) },
+    }),
+  };
+};
 
 /** Public projection only. Execution settings, drafts and internal messages never leave this boundary. */
 /**
@@ -131,7 +189,20 @@ const sourceTopicsByMessage = async (
 
 const THREAD_PREVIEW_LENGTH = 240;
 
+/**
+ * Request keys of the acknowledgements an Agent posts before its run (`openingRequestKey` in
+ * `./opening`, which imports this module, so the prefix is repeated here).
+ */
+const OPENING_REQUEST_KEY_PATTERN = 'opening:%';
+
+/** An Agent's acknowledgement before its run: it says the work started, not what came of it. */
+const isOpeningAck = and(
+  eq(channelMessages.routingStatus, 'reply'),
+  like(channelMessages.requestKey, OPENING_REQUEST_KEY_PATTERN),
+);
+
 type ThreadSummary = {
+  lastNewsAt: Date | null;
   lastReply: Pick<ReturnType<typeof publicMessage>, 'author' | 'content' | 'createdAt' | 'id'>;
   replyCount: number;
 };
@@ -145,7 +216,14 @@ const threadSummaries = async (tx: Transaction, channelId: string, threadIds: st
   );
   const [counts, latest] = await Promise.all([
     tx
-      .select({ replyCount: count(), threadId: channelMessages.threadId })
+      .select({
+        lastNewsAt:
+          sql<Date | null>`max(${channelMessages.createdAt}) filter (where not (${isOpeningAck}))`.mapWith(
+            channelMessages.createdAt,
+          ),
+        replyCount: count(),
+        threadId: channelMessages.threadId,
+      })
       .from(channelMessages)
       .where(scope)
       .groupBy(channelMessages.threadId),
@@ -157,20 +235,280 @@ const threadSummaries = async (tx: Transaction, channelId: string, threadIds: st
       .where(scope)
       .orderBy(asc(channelMessages.threadId), desc(channelMessages.sequence)),
   ]);
-  const replyCounts = new Map(counts.map((row) => [row.threadId, row.replyCount]));
+  const countsByThread = new Map(counts.map((row) => [row.threadId, row]));
   return new Map<string, ThreadSummary>(
     latest.map((row) => {
       const { author, content, createdAt, id } = publicMessage(row, []);
       return [
         row.threadId!,
         {
+          lastNewsAt: countsByThread.get(row.threadId)?.lastNewsAt ?? null,
           lastReply: { author, content: content.slice(0, THREAD_PREVIEW_LENGTH), createdAt, id },
-          replyCount: replyCounts.get(row.threadId) ?? 0,
+          replyCount: countsByThread.get(row.threadId)?.replyCount ?? 0,
         },
       ];
     }),
   );
 };
+
+/**
+ * A job as the public view shows it. The repository drops `requesterMemberId`, and keeps
+ * `topicId` only for the viewer who owns that topic (`topicOwnerId`), as replies keep
+ * `sourceTopicId`: the topic belongs to the requester, so other members never learn its id.
+ */
+const publicJobColumns = {
+  id: channelJobs.id,
+  memberId: channelJobs.memberId,
+  messageId: channelJobs.messageId,
+  requesterMemberId: channelJobs.requesterMemberId,
+  threadId: channelJobs.threadId,
+  status: channelJobs.status,
+  blockedCode: channelJobs.blockedCode,
+  // Only a bounded diagnostic message crosses the public boundary, never the raw error.
+  errorMessage: sql<string | null>`CASE WHEN ${channelJobs.status} = 'failed'
+      THEN left(${agentOperations.error}->>'message', 2000) ELSE NULL END`,
+  // The error's category, so a client can explain a known failure in the viewer's language.
+  errorType: sql<string | null>`CASE WHEN ${channelJobs.status} = 'failed'
+      THEN ${agentOperations.error}->>'type' ELSE NULL END`,
+  // The device the reply runs on, waits for, or failed to reach: the claimed device, the
+  // one a failed dispatch was routed to, or the Agent's own bound device.
+  deviceId: sql<string | null>`COALESCE(
+      ${channelJobs.deviceId},
+      ${agentOperations.error}->'deviceRoute'->>'deviceId',
+      ${channelJobs.executionConfig}->'agencyConfig'->>'boundDeviceId'
+    )`,
+  writerHeld: channelJobs.writerHeld,
+  // The acknowledgement posted before the run (`openingRequestKey`), so a failure shows under it.
+  openingMessageId: sql<string | null>`(SELECT ${channelMessages.id} FROM ${channelMessages}
+      WHERE ${channelMessages.channelId} = ${channelJobs.channelId}
+        AND ${channelMessages.requestKey} = 'opening:' || ${channelJobs.id}::text)`,
+  topicId: channelJobs.topicId,
+  // Its name, under the same owner-only rule as the id, so a reply at work says which topic it is.
+  topicTitle: topics.title,
+  // A trashed topic has no owner here, so its link goes with it.
+  topicOwnerId: sql<string | null>`CASE WHEN ${notTrashed(topics.isDeleted)}
+      THEN ${topics.userId} ELSE NULL END`,
+  worktreeBranch: sql<string | null>`${channelJobs.executionConfig}->>'worktreeBranch'`,
+  operationStatus: agentOperations.status,
+  createdAt: channelJobs.createdAt,
+  publicationRevoked: channelJobs.publicationRevoked,
+  // Read only to redact the error of a shared Agent's run, then dropped by `readJobs`.
+  sharedRun: sql<boolean>`COALESCE(jsonb_exists(${channelJobs.executionConfig}, 'share'), false)`,
+};
+
+/** At most this many of a main view's threads' jobs still at work ride along with its own. */
+const THREAD_ACTIVE_JOB_LIMIT = 50;
+
+/**
+ * A shared Agent runs under its owner's credentials, so its failure text can carry the owner's
+ * provider or infrastructure diagnostics. The viewer of such a run is the visitor, who gets the
+ * share page's projection (`sanitizeVisitorError`): a classified type, and the message only for
+ * the few visitor-safe codes.
+ */
+const redactSharedRunError = <
+  Job extends {
+    errorMessage: string | null;
+    errorType: string | null;
+    sharedRun: boolean;
+  },
+>({
+  sharedRun,
+  ...job
+}: Job) => {
+  // A failure that records only its type is redacted too: the type alone can name the owner's
+  // provider or budget (`InsufficientBudgetForModel`), which a visitor must not learn.
+  if (!sharedRun || (job.errorMessage === null && job.errorType === null)) return job;
+  const safe = sanitizeVisitorError({
+    message: job.errorMessage,
+    type: job.errorType ?? undefined,
+  } as ChatMessageError);
+  return { ...job, errorMessage: safe?.message ?? null, errorType: safe?.type?.toString() ?? null };
+};
+
+const readJobs = async (tx: Transaction, where: SQL | undefined, limit: number) => {
+  const rows = await tx
+    .select(publicJobColumns)
+    .from(channelJobs)
+    .leftJoin(agentOperations, eq(agentOperations.id, channelJobs.operationId))
+    .leftJoin(topics, eq(topics.id, channelJobs.topicId))
+    .where(where)
+    .orderBy(desc(channelJobs.createdAt))
+    .limit(limit);
+  return rows.map(redactSharedRunError);
+};
+
+interface MemberDevice {
+  agentId: string | null;
+  deviceId: string | null;
+  deviceOwnerId: string | null;
+}
+
+interface MemberDeviceInfo {
+  defaultCwd: string | null;
+  name: string | null;
+}
+
+/**
+ * The devices Agent members run on, keyed by member: display name and default directory. A device
+ * id is unique only within its principal, so each one resolves the way execution does: the
+ * Channel's workspace device first, else the personal device of the member who owns it.
+ */
+const memberDevices = async (
+  tx: Transaction,
+  workspaceId: string | null,
+  members: MemberDevice[],
+) => {
+  const configured = members.filter(
+    (member): member is MemberDevice & { deviceId: string } =>
+      !!member.agentId && !!member.deviceId,
+  );
+  const infos = new Map<MemberDevice, MemberDeviceInfo>();
+  if (!configured.length) return infos;
+
+  const owners = [
+    ...new Set(
+      configured.flatMap((member) => (member.deviceOwnerId ? [member.deviceOwnerId] : [])),
+    ),
+  ];
+  const scopes = [
+    workspaceId ? eq(devices.workspaceId, workspaceId) : undefined,
+    owners.length ? and(isNull(devices.workspaceId), inArray(devices.userId, owners)) : undefined,
+  ].filter((scope): scope is SQL => !!scope);
+  if (!scopes.length) return infos;
+
+  const rows = await tx
+    .select({
+      defaultCwd: devices.defaultCwd,
+      deviceId: devices.deviceId,
+      friendlyName: devices.friendlyName,
+      hostname: devices.hostname,
+      userId: devices.userId,
+      workspaceId: devices.workspaceId,
+    })
+    .from(devices)
+    .where(
+      and(
+        inArray(
+          devices.deviceId,
+          configured.map((member) => member.deviceId),
+        ),
+        or(...scopes),
+      ),
+    );
+  for (const member of configured) {
+    const row =
+      rows.find((entry) => entry.deviceId === member.deviceId && entry.workspaceId) ??
+      rows.find(
+        (entry) =>
+          entry.deviceId === member.deviceId &&
+          !entry.workspaceId &&
+          entry.userId === member.deviceOwnerId,
+      );
+    if (row)
+      infos.set(member, {
+        defaultCwd: row.defaultCwd,
+        name: row.friendlyName || row.hostname || null,
+      });
+  }
+  return infos;
+};
+
+interface EnvironmentViewer {
+  /** The viewer's own device picks per Agent in the Channel's workspace. */
+  deviceOverrides: Record<string, AgentDeviceOverride>;
+  userId: string | undefined;
+  workspaceId: string | null;
+}
+
+/**
+ * Where an Agent member runs: the device and directory the Channel picked for it, else the device
+ * a request from the viewer routes to, the Agent's own binding with the viewer's device override
+ * on top, as the run resolves it. Shown only when that is one fixed device the viewer may see: a
+ * workspace Agent in its own workspace's Channel, or a personal Agent to its owner, so a share
+ * link visitor never learns the owner's device. Any other target (auto, local, sandbox) picks its
+ * device per run, so there is none to show ahead of it.
+ */
+const memberEnvironmentSource = <
+  T extends {
+    agencyConfig: LobeAgentAgencyConfig | null;
+    agentId: string | null;
+    agentUserId: string | null;
+    agentVisibility: 'private' | 'public' | null;
+    agentWorkspaceId: string | null;
+    deviceId: string | null;
+    deviceOwnerId: string | null;
+    workingDirectory: string | null;
+  },
+>(
+  row: T,
+  viewer: EnvironmentViewer,
+): T & { inheritedConfig: LobeAgentAgencyConfig | null } => {
+  const none = { ...row, inheritedConfig: null };
+  if (!row.agentId || row.deviceId || row.workingDirectory) return none;
+  const visible = row.agentWorkspaceId
+    ? row.agentWorkspaceId === viewer.workspaceId
+    : !!viewer.userId && row.agentUserId === viewer.userId;
+  if (!visible) return none;
+  const override = row.agentWorkspaceId ? viewer.deviceOverrides[row.agentId] : undefined;
+  const config = resolveAgentAgencyConfig(row.agencyConfig, override, {
+    canManage: !!viewer.userId && row.agentUserId === viewer.userId,
+    visibility: row.agentVisibility ?? undefined,
+    workspaceId: row.agentWorkspaceId,
+  });
+  if (config?.executionTarget !== 'device' || !config.boundDeviceId) return none;
+  return {
+    ...row,
+    deviceId: config.boundDeviceId,
+    // A device the viewer picked may be their own personal one.
+    deviceOwnerId:
+      override?.boundDeviceId === config.boundDeviceId ? viewer.userId! : row.agentUserId,
+    inheritedConfig: config,
+  };
+};
+
+const environmentViewer = async (
+  tx: Transaction,
+  channelId: string,
+  userId: string | undefined,
+): Promise<EnvironmentViewer> => {
+  const [channel] = await tx
+    .select({ workspaceId: channels.workspaceId })
+    .from(channels)
+    .where(eq(channels.id, channelId));
+  const workspaceId = channel?.workspaceId ?? null;
+  const [settings] =
+    workspaceId && userId
+      ? await tx
+          .select({ preference: workspaceUserSettings.preference })
+          .from(workspaceUserSettings)
+          .where(
+            and(
+              eq(workspaceUserSettings.workspaceId, workspaceId),
+              eq(workspaceUserSettings.userId, userId),
+            ),
+          )
+      : [];
+  return {
+    deviceOverrides: settings?.preference.agentDeviceOverrides ?? {},
+    userId,
+    workspaceId,
+  };
+};
+
+/**
+ * A view's jobs as one viewer sees them: who may stop each, and the run's topic (id and title)
+ * only for the viewer who runs the reply; for anyone else the job carries no topic at all.
+ */
+export const viewerJobs = (
+  jobs: Awaited<ReturnType<typeof readChannelView>>['jobs'],
+  viewerUserId: string,
+  canStop: (requesterMemberId: string | null) => boolean,
+) =>
+  jobs.map(({ requesterMemberId, topicId, topicOwnerId, topicTitle, ...job }) => ({
+    ...job,
+    canStop: canStop(requesterMemberId),
+    ...(topicId && topicOwnerId === viewerUserId ? { topicId, topicTitle } : {}),
+  }));
 
 export const readChannelView = async (
   tx: Transaction,
@@ -179,17 +517,19 @@ export const readChannelView = async (
   viewerUserId?: string,
 ) => {
   const limit = Math.max(1, Math.min(options.limit ?? 100, 100));
-  const [members, reversed, threads, jobs] = await Promise.all([
+  const [members, reversed, threads, ownJobs, threadJobs] = await Promise.all([
     tx
       .select({
         actorType: channelMembers.actorType,
         agentId: channelMembers.agentId,
-        avatar: agents.avatar,
+        avatar: agentAvatarSql(),
         // The same fallback routing uses: a Channel-specific description, else the Agent's own.
         description: sql<
           string | null
         >`coalesce(nullif(${channelMembers.description}, ''), ${agents.description})`,
         id: channelMembers.id,
+        invitedBy: sql<string | null>`${channelMembers.metadata}->>'invitedBy'`,
+        muted: sql<boolean>`coalesce((${channelMembers.config}->>'muted')::boolean, false)`,
         name: channelMembers.name,
         role: channelMembers.role,
         status: channelMembers.status,
@@ -199,6 +539,13 @@ export const readChannelView = async (
         userAvatar: users.avatar,
         lastReadSequence: channelMembers.lastReadSequence,
         joinedAt: channelMembers.createdAt,
+        deviceId: sql<string | null>`${channelMembers.config}->>'deviceId'`,
+        deviceOwnerId: sql<string | null>`${channelMembers.config}->>'deviceOwnerId'`,
+        workingDirectory: sql<string | null>`${channelMembers.config}->>'workingDirectory'`,
+        agencyConfig: agents.agencyConfig,
+        agentUserId: agents.userId,
+        agentVisibility: agents.visibility,
+        agentWorkspaceId: agents.workspaceId,
       })
       .from(channelMembers)
       .leftJoin(users, eq(users.id, channelMembers.userId))
@@ -226,37 +573,40 @@ export const readChannelView = async (
       .from(channelThreads)
       .where(and(eq(channelThreads.channelId, channelId), notTrashed(channelThreads.isDeleted)))
       .orderBy(asc(channelThreads.createdAt)),
-    tx
-      .select({
-        id: channelJobs.id,
-        memberId: channelJobs.memberId,
-        messageId: channelJobs.messageId,
-        requesterMemberId: channelJobs.requesterMemberId,
-        threadId: channelJobs.threadId,
-        status: channelJobs.status,
-        blockedCode: channelJobs.blockedCode,
-        // Only a bounded diagnostic message crosses the public boundary, never the raw error.
-        errorMessage: sql<string | null>`CASE WHEN ${channelJobs.status} = 'failed'
-          THEN left(${agentOperations.error}->>'message', 2000) ELSE NULL END`,
-        writerHeld: channelJobs.writerHeld,
-        worktreeBranch: sql<string | null>`${channelJobs.executionConfig}->>'worktreeBranch'`,
-        operationStatus: agentOperations.status,
-        createdAt: channelJobs.createdAt,
-        publicationRevoked: channelJobs.publicationRevoked,
-      })
-      .from(channelJobs)
-      .leftJoin(agentOperations, eq(agentOperations.id, channelJobs.operationId))
-      .where(
-        and(
-          eq(channelJobs.channelId, channelId),
-          options.threadId
-            ? eq(channelJobs.threadId, options.threadId)
-            : isNull(channelJobs.threadId),
+    readJobs(
+      tx,
+      and(
+        eq(channelJobs.channelId, channelId),
+        options.threadId
+          ? eq(channelJobs.threadId, options.threadId)
+          : isNull(channelJobs.threadId),
+      ),
+      200,
+    ),
+    // The main timeline also carries its threads' replies still at work, so a thread card and
+    // the header can show an Agent working without loading every thread. Bounded on its own,
+    // so busy threads never push the main conversation's own jobs out of its limit.
+    options.threadId
+      ? []
+      : readJobs(
+          tx,
+          and(
+            eq(channelJobs.channelId, channelId),
+            isNotNull(channelJobs.threadId),
+            or(
+              inArray(channelJobs.status, ['queued', 'running']),
+              eq(channelJobs.writerHeld, true),
+            ),
+          ),
+          THREAD_ACTIVE_JOB_LIMIT,
         ),
-      )
-      .orderBy(desc(channelJobs.createdAt))
-      .limit(200),
   ]);
+  const viewer = await environmentViewer(tx, channelId, viewerUserId);
+  const environments = members.map((row) => memberEnvironmentSource(row, viewer));
+  const deviceInfos = await memberDevices(tx, viewer.workspaceId, environments);
+  const jobs = [...ownJobs, ...threadJobs].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
   if (options.threadId && !threads.some((thread) => thread.id === options.threadId))
     throw new ChannelError('NOT_FOUND', 'Thread not found');
   const thread = threads.find((entry) => entry.id === options.threadId);
@@ -297,8 +647,11 @@ export const readChannelView = async (
     : [];
   const quotes = new Map(
     quoted.map((row) => {
-      const { author, content, id, sequence, threadId } = publicMessage(row, []);
-      return [id, { author, content: content.slice(0, 240), id, sequence, threadId }] as const;
+      const { author, content, deletedAt, id, sequence, threadId } = publicMessage(row, []);
+      return [
+        id,
+        { author, content: content.slice(0, 240), deletedAt, id, sequence, threadId },
+      ] as const;
     }),
   );
   const files = await fileIdsByMessage(tx, [
@@ -330,13 +683,39 @@ export const readChannelView = async (
     attachments,
     hasMore: reversed.length > limit,
     jobs,
-    members,
+    members: environments.map((row) => {
+      const {
+        agencyConfig: _agencyConfig,
+        agentUserId: _agentUserId,
+        agentVisibility: _agentVisibility,
+        agentWorkspaceId: _agentWorkspaceId,
+        deviceId,
+        deviceOwnerId: _deviceOwnerId,
+        inheritedConfig,
+        workingDirectory: channelDirectory,
+        ...member
+      } = row;
+      const device = deviceInfos.get(row);
+      // An inherited device works in the Agent's own folder there, else the device's default.
+      const workingDirectory =
+        inheritedConfig && deviceId
+          ? (defaultChannelAgentDirectory(inheritedConfig, deviceId, device?.defaultCwd) ?? null)
+          : channelDirectory;
+      return {
+        ...member,
+        environment:
+          member.agentId && (deviceId || workingDirectory)
+            ? { deviceId, deviceName: device?.name ?? null, workingDirectory }
+            : null,
+      };
+    }),
     threads: threads.map((entry) => {
       const title = entry.metadata?.title;
       const named = typeof title === 'string' && title ? { ...entry, title } : entry;
       return summarized.includes(entry.id)
         ? {
             ...named,
+            lastNewsAt: summaries.get(entry.id)?.lastNewsAt ?? null,
             lastReply: summaries.get(entry.id)?.lastReply ?? null,
             replyCount: summaries.get(entry.id)?.replyCount ?? 0,
           }

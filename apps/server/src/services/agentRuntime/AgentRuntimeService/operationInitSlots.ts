@@ -41,11 +41,13 @@ export type OperationInitSlots = Pick<
 export const buildPreInitState = (
   params: OperationCreationParams,
   {
+    artboardWorksAccepted,
     fileWorksAccepted,
     llmExecutor,
   }: {
     /** The client's `file` Works declaration, inherited by a group member. */
     fileWorksAccepted?: boolean;
+    artboardWorksAccepted?: boolean;
     llmExecutor?: NonNullable<AgentState['host']>['llmExecutor'];
   },
 ): Partial<AgentState> => {
@@ -53,6 +55,7 @@ export const buildPreInitState = (
     agentConfig,
     agentShareVisitor,
     appContext,
+    autoSkillIds,
     botContext,
     botPlatformContext,
     deviceAccessPolicy,
@@ -83,6 +86,7 @@ export const buildPreInitState = (
     // What the host needs to deliver and retry the run. Hooks are stamped
     // right after creation once the dispatcher has serialized them.
     host: {
+      ...(artboardWorksAccepted === true && { acceptsArtboardWorks: true }),
       ...(fileWorksAccepted === true && { acceptsFileWorks: true }),
       ...(params.clientProtocol === 2 && { clientProtocol: 2 as const }),
       ...(params.includeFinalState === true && { includeFinalState: true }),
@@ -166,6 +170,7 @@ export const buildPreInitState = (
     // the context engine reads it on every step.
     world: {
       agent: agentConfig,
+      ...(autoSkillIds?.length && { autoSkillIds }),
       ...((botPlatformContext || discordContext) && {
         channel: { botPlatform: botPlatformContext, discord: discordContext },
       }),

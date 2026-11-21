@@ -86,14 +86,18 @@ describe('settings useCategory', () => {
     expect(groupKeys(SettingsGroupKey.Connection)).toEqual([
       SettingsTabs.Messenger,
       SettingsTabs.Integrations,
-      SettingsTabs.Connector,
-      SettingsTabs.Creds,
     ]);
+    // Skills and connectors moved to the Marketplace.
+    expect(getItemKeys()).not.toContain(SettingsTabs.Skill);
+    expect(getItemKeys()).not.toContain(SettingsTabs.Connector);
 
     // The sandbox drives moved to Docs → Sandbox Storage; settings keep only the
     // environment definitions.
     const keys = groupKeys(SettingsGroupKey.Resource);
     expect(keys).toContain(SettingsTabs.Environments);
+    // Credentials share the Environments page: one entry for what a run starts
+    // from and the secrets it reads.
+    expect(keys).not.toContain(SettingsTabs.Creds);
     expect(keys).not.toContain('drive');
   });
 
@@ -158,5 +162,41 @@ describe('settings useCategory', () => {
     const systemGroup = result.current.find((group) => group.key === SettingsGroupKey.System);
 
     expect(systemGroup?.items.map((item) => item.key)).toContain(SettingsTabs.OAuthApps);
+  });
+});
+
+describe('settings useCategory automations', () => {
+  const connectionKeys = (enableWebhook: boolean) => {
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <Provider
+        createStore={() =>
+          initServerConfigStore({
+            featureFlags: { ...mapFeatureFlagsEnvToState({}), enableWebhook },
+            serverConfig: { aiProvider: {}, telemetry: {} },
+          })
+        }
+      >
+        {children}
+      </Provider>
+    );
+    const { result } = renderHook(() => useCategory(), { wrapper: Wrapper });
+
+    return result.current
+      .find((group) => group.key === SettingsGroupKey.Connection)
+      ?.items.map((item) => item.key);
+  };
+
+  // Unreleased: the tab follows the `webhook` flag (LOBE-UX-015).
+  it('hides Automations while MCP Events is off', () => {
+    expect(connectionKeys(false)).not.toContain(SettingsTabs.Automations);
+  });
+
+  it('lists Automations right after Integrations now that connectors live in the Marketplace', () => {
+    const keys = connectionKeys(true) ?? [];
+
+    expect(keys).not.toContain(SettingsTabs.Connector);
+    expect(keys.indexOf(SettingsTabs.Automations)).toBe(
+      keys.indexOf(SettingsTabs.Integrations) + 1,
+    );
   });
 });

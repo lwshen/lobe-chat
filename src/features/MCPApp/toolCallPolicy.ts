@@ -7,12 +7,19 @@ import type {
   HumanInterventionPolicy,
   ToolManifest,
 } from '@lobechat/types';
+import { getDisabledPluginIds } from '@lobechat/types';
 
+import { resolveRunConnector, type RunConnector } from '@/services/connectorRun';
+import { getRunConnectors } from '@/services/runConnectors';
+import { getAgentStoreState } from '@/store/agent';
+import { agentSelectors } from '@/store/agent/selectors';
 import { getToolStoreState } from '@/store/tool';
 import { pluginSelectors } from '@/store/tool/selectors';
-import { connectorSelectors } from '@/store/tool/slices/connector';
+import { pickRunConnectors } from '@/store/tool/slices/connector/selectors';
 import { getUserStoreState } from '@/store/user';
 import { toolInterventionSelectors } from '@/store/user/selectors';
+
+import { connectorForTool } from './connectorForTool';
 
 /**
  * What LobeHub does with a `tools/call` a view sends. A view can call tools on
@@ -85,17 +92,66 @@ type ToolLookup = { intervention?: unknown } | { missingFrom: string } | null;
  * The tool's own approval setting as the conversation's manifest carries it,
  * or null when the server doesn't offer the tool.
  */
+const PERMISSION_STRICTNESS: Record<string, number> = { auto: 1, disabled: 3, needs_approval: 2 };
+
+const strictestPermission = (permissions: (string | undefined)[]): string | undefined =>
+  permissions.reduce<string | undefined>(
+    (strictest, permission) =>
+      permission &&
+      (PERMISSION_STRICTNESS[permission] ?? 0) > (PERMISSION_STRICTNESS[strictest ?? ''] ?? 0)
+        ? permission
+        : strictest,
+    undefined,
+  );
+
+/**
+ * A plugin tool's permission as the conversation applies it: plugin calls keep
+ * the bare identifier, so the permission row is the one the run ranks first
+ * for it (the owner's private row shadows the shared one in their private
+ * agent's own topic, `pickRunConnectors`), not the row whose tool prefix the
+ * identifier names. The server's listing for the conversation decides which
+ * rows take part; without it any row of the identifier may be the one, so the
+ * strictest setting among them holds.
+ */
+const pluginToolPermission = (
+  identifier: string,
+  toolName: string,
+  run: { agentId?: string; topicId?: string },
+): string | undefined => {
+  const s = getToolStoreState();
+  const listed = run.agentId ? getRunConnectors(run) : undefined;
+  const rows = listed
+    ? pickRunConnectors(
+        listed.filter((c) => c.identifier === identifier),
+        { agentId: run.agentId, includePrivate: true },
+      )
+    : [
+        ...(s.connectors ?? []),
+        ...(run.agentId ? (s.agentConnectors?.[run.agentId] ?? []) : []),
+      ].filter((c) => c.identifier === identifier);
+  return strictestPermission(
+    rows.map((c) => c.tools.find((t) => t.toolName === toolName)?.permission),
+  );
+};
+
 const findToolIntervention = (
+  /**
+   * The connector the call runs on ({@link resolveRunConnector}): approval is
+   * the executing row's, never a same-named row the conversation can't use.
+   */
+  resolved: RunConnector | undefined,
   identifier: string,
   toolName: string,
   agentId: string | undefined,
   /** The lists were just loaded from the server; if not, nothing here can waive approval. */
   revalidated: boolean,
+  fromEntrypoint = false,
+  /** A plugin tool's permission as the conversation applies it ({@link pluginToolPermission}). */
+  pluginPermission?: string,
 ): ToolLookup => {
   const s = getToolStoreState();
   const confirmed = revalidated && s.isConnectorListConfirmed(agentId);
 
-  const resolved = connectorSelectors.connectorByIdentifierForAgent(identifier, agentId)(s);
   const plugin =
     pluginSelectors.getInstalledPluginById(identifier)(s) ||
     pluginSelectors.getCustomPluginById(identifier)(s);
@@ -103,6 +159,7 @@ const findToolIntervention = (
   // install is not run, so the plugin row it falls back to decides
   const connector =
     resolved && isMarketplaceInstallRunnable(resolved, !!plugin) ? resolved : undefined;
+  if (fromEntrypoint && connector && !connector.isEnabled) return null;
   if (
     connector?.isEnabled &&
     (!!connector.mcpServerUrl || connector.mcpConnectionType === 'stdio')
@@ -116,7 +173,11 @@ const findToolIntervention = (
     // offers only to views
     if (!tool) return { missingFrom: connector.id };
     // A tool only the model may call is refused before anyone is asked about it
-    if (tool.permission === 'disabled' || !isSyncedMcpToolVisibleTo(tool, 'app')) return null;
+    if (
+      tool.permission === 'disabled' ||
+      (!fromEntrypoint && !isSyncedMcpToolVisibleTo(tool, 'app', true))
+    )
+      return null;
     // Same mapping as the connector manifest (`buildConnectorManifest`)
     return { intervention: connectorToolIntervention(tool) };
   }
@@ -133,7 +194,7 @@ const findToolIntervention = (
     | undefined;
   // MCP Apps visibility: a tool only the model may call is refused to views, and
   // one kept from the model is still the view's to call
-  if (manifest?.mcpModelOnlyTools?.includes(toolName)) return null;
+  if (!fromEntrypoint && manifest?.mcpModelOnlyTools?.includes(toolName)) return null;
   const api = [...(manifest?.api ?? []), ...(manifest?.mcpAppOnlyApi ?? [])].find(
     (item) => item.name === toolName,
   );
@@ -143,7 +204,12 @@ const findToolIntervention = (
   // (patchManifestWithPermissions). Until the server confirms the lists they
   // may be stale or missing, so ask.
   if (!confirmed) return { intervention: 'required' };
-  const permission = resolved?.tools.find((t) => t.toolName === toolName)?.permission;
+  // The row the identifier names and the row the conversation ranks first for
+  // it: the stricter setting holds
+  const permission = strictestPermission([
+    resolved?.tools.find((t) => t.toolName === toolName)?.permission,
+    pluginPermission,
+  ]);
   if (permission === 'disabled') return null;
   // Never looser than the tool's own `always` (`patchManifestWithPermissions`)
   if (permission === 'needs_approval')
@@ -211,19 +277,81 @@ const resyncConnectorTools = (connectorId: string): Promise<boolean> => {
   return resync;
 };
 
+/**
+ * The tool's setting on the connector the call runs on. Without an answer from
+ * the server about which row that is, it asks.
+ */
+const lookUpTool = async (
+  identifier: string,
+  toolName: string,
+  run: { agentId?: string; topicId?: string },
+  revalidated: boolean,
+  fromEntrypoint = false,
+): Promise<ToolLookup> => {
+  let connector: RunConnector | undefined;
+  try {
+    connector = await resolveRunConnector(identifier, run);
+  } catch (error) {
+    console.warn('[MCPApp] failed to resolve the connector of a view tool call:', error);
+    return { intervention: 'required' };
+  }
+  return findToolIntervention(
+    connector,
+    identifier,
+    toolName,
+    run.agentId,
+    revalidated,
+    fromEntrypoint,
+    pluginToolPermission(identifier, toolName, run),
+  );
+};
+
 export const getAppToolCallPolicy = async (
   identifier: string,
   toolName: string,
-  { agentId, toolArgs = {} }: { agentId?: string; toolArgs?: Record<string, unknown> } = {},
+  {
+    agentId,
+    toolArgs = {},
+    fromEntrypoint = false,
+    topicId,
+  }: {
+    agentId?: string;
+    toolArgs?: Record<string, unknown>;
+    fromEntrypoint?: boolean;
+    /** The conversation the view's result belongs to; its calls run in it. */
+    topicId?: string;
+  } = {},
 ): Promise<AppToolCallPolicy> => {
+  if (
+    fromEntrypoint &&
+    agentId &&
+    getDisabledPluginIds(
+      agentSelectors.getAgentConfigById(agentId)(getAgentStoreState())?.plugins,
+      // The agent disables a connector, not one row's tool prefix
+    ).includes(connectorForTool(identifier, agentId)(getToolStoreState())?.identifier ?? identifier)
+  )
+    return 'deny';
+  if (fromEntrypoint) {
+    const state = getToolStoreState();
+    if (!pluginSelectors.isInstalledPluginsServerConfirmed(state)) {
+      try {
+        await state.refreshPlugins();
+      } catch {
+        return 'deny';
+      }
+    }
+  }
   const revalidated = await revalidateConnectors(agentId);
-  let tool = findToolIntervention(identifier, toolName, agentId, revalidated);
+  const run = { agentId, topicId };
+  let tool = await lookUpTool(identifier, toolName, run, revalidated, fromEntrypoint);
   if (tool && 'missingFrom' in tool) {
     tool = (await resyncConnectorTools(tool.missingFrom))
-      ? findToolIntervention(identifier, toolName, agentId, revalidated)
+      ? await lookUpTool(identifier, toolName, run, revalidated, fromEntrypoint)
       : null;
   }
   if (!tool || 'missingFrom' in tool) return 'deny';
+
+  if (fromEntrypoint) return revalidated ? 'allow' : 'deny';
 
   const userState = getUserStoreState();
 

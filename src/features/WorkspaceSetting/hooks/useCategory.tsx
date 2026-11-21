@@ -1,10 +1,8 @@
 import { isDesktop } from '@lobechat/const';
 import { Avatar } from '@lobehub/ui';
-import { SkillsIcon } from '@lobehub/ui/icons';
 import {
   AppWindowIcon,
   BellIcon,
-  Blocks,
   Brain,
   Building2,
   ChartColumnBigIcon,
@@ -20,7 +18,6 @@ import {
   Info,
   KeyboardIcon,
   KeyIcon,
-  KeyRound,
   Map,
   MessageCircleIcon,
   MessagesSquareIcon,
@@ -33,6 +30,8 @@ import {
   Trash2,
   Users,
   UsersRound,
+  WebhookIcon,
+  ZapIcon,
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -40,7 +39,11 @@ import { useTranslation } from 'react-i18next';
 import { usePermission } from '@/hooks/usePermission';
 import { useElectronStore } from '@/store/electron';
 import { electronSyncSelectors } from '@/store/electron/selectors';
-import { featureFlagsSelectors, useServerConfigStore } from '@/store/serverConfig';
+import {
+  featureFlagsSelectors,
+  serverConfigSelectors,
+  useServerConfigStore,
+} from '@/store/serverConfig';
 import { useUserStore } from '@/store/user';
 import { labPreferSelectors, userProfileSelectors } from '@/store/user/selectors';
 import { WorkspaceSettingsTabs } from '@/types/workspaceSettings';
@@ -82,6 +85,7 @@ export const useWorkspaceSettingCategory = (): WorkspaceSettingCategoryGroup[] =
   const { allowed: canCreateContent } = usePermission('create_content');
   const enableOAuthApps = useUserStore(labPreferSelectors.enableOAuthApps);
   const { hideDocs } = useServerConfigStore(featureFlagsSelectors);
+  const enableWebhook = useServerConfigStore(serverConfigSelectors.enableWebhook);
   const [avatar, username] = useUserStore((s) => [
     userProfileSelectors.userAvatar(s),
     userProfileSelectors.nickName(s),
@@ -227,11 +231,6 @@ export const useWorkspaceSettingCategory = (): WorkspaceSettingCategoryGroup[] =
               key: WorkspaceSettingsTabs.ServiceModel,
               label: t('tab.serviceModel'),
             },
-            {
-              icon: SkillsIcon,
-              key: WorkspaceSettingsTabs.Skill,
-              label: t('workspaceSetting.tab.skill'),
-            },
             // Label registry is readable by everyone; the page itself keeps
             // management actions behind the admin gate (disabled, not hidden).
             {
@@ -255,17 +254,20 @@ export const useWorkspaceSettingCategory = (): WorkspaceSettingCategoryGroup[] =
               key: WorkspaceSettingsTabs.Integrations,
               label: t('tab.integrations'),
             },
-            {
-              icon: Blocks,
-              key: WorkspaceSettingsTabs.Connector,
-              label: t('workspaceSetting.tab.connector'),
+            // Every member sees the workspace's event subscriptions, so it is
+            // clear what fires the shared agents; managing one is per row.
+            enableWebhook && {
+              icon: ZapIcon,
+              key: WorkspaceSettingsTabs.Automations,
+              label: t('tab.automations'),
             },
-            {
-              icon: KeyRound,
-              key: WorkspaceSettingsTabs.Creds,
-              label: t('tab.creds'),
+            // The workspace's agents' webhooks; made on each agent's page, managed here too.
+            enableWebhook && {
+              icon: WebhookIcon,
+              key: WorkspaceSettingsTabs.Webhooks,
+              label: t('tab.webhooks'),
             },
-          ],
+          ].filter(Boolean) as WorkspaceSettingCategoryItem[],
           key: WorkspaceSettingsGroupKey.Connection,
           title: t('group.connection'),
         },
@@ -286,12 +288,13 @@ export const useWorkspaceSettingCategory = (): WorkspaceSettingCategoryGroup[] =
               key: WorkspaceSettingsTabs.SubscriptionAccounts,
               label: t('tab.subscriptionAccounts'),
             },
-            // Always there: a code environment is a definition, written down before
-            // anything runs it, and useful with or without a drive to run it on.
+            // Environments & Vault, always there: what a run starts from and
+            // the secrets it reads, in one place. An environment is a definition,
+            // written down before anything runs it, so it needs no drive.
             {
               icon: ContainerIcon,
               key: WorkspaceSettingsTabs.Environments,
-              label: t('tab.environments'),
+              label: t('tab.environmentsAndCreds'),
             },
           ].filter(Boolean) as WorkspaceSettingCategoryItem[],
           key: WorkspaceSettingsGroupKey.Resource,
@@ -367,6 +370,7 @@ export const useWorkspaceSettingCategory = (): WorkspaceSettingCategoryGroup[] =
       canViewBilling,
       canCreateContent,
       hideDocs,
+      enableWebhook,
       avatarUrl,
       username,
     ],
