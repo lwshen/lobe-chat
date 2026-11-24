@@ -113,14 +113,13 @@ vi.mock('@/business/server/agent-share/spendGate', () => ({
 const mockFilterAddressBookPeople = vi.fn();
 const mockListAddressBookPeople = vi.fn();
 const mockFindUser = vi.fn();
-vi.mock('@/database/models/contact', () => ({
-  ContactModel: vi.fn(function () {
-    return {
-      filterAddressBookPeople: mockFilterAddressBookPeople,
-      findUser: mockFindUser,
-      listAddressBookPeople: mockListAddressBookPeople,
-    };
-  }),
+vi.mock('@/business/server/contact/addressBook', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getAddressBook: vi.fn(() => ({
+    filterAddressBookPeople: mockFilterAddressBookPeople,
+    findUser: mockFindUser,
+    listAddressBookPeople: mockListAddressBookPeople,
+  })),
 }));
 
 const mockGetFeatureFlagsState = vi.fn();
@@ -451,6 +450,14 @@ describe('agentShareRouter', () => {
       expect(mockUpdateConfig).toHaveBeenCalledWith('agent-1', { deviceAccess: 'contacts' });
     });
 
+    it('stores an open grant for every visitor even while contacts are off', async () => {
+      const caller = agentShareRouter.createCaller(await createContextInner({ userId: 'user-1' }));
+      mockGetFeatureFlagsState.mockResolvedValue({ enableAgentShare: true, enableChannels: false });
+
+      await caller.updateShareConfig({ agentId: 'agent-1', config: { deviceAccess: 'everyone' } });
+      expect(mockUpdateConfig).toHaveBeenCalledWith('agent-1', { deviceAccess: 'everyone' });
+    });
+
     // The runtime grants nothing while contacts are off, so a grant must not be
     // stored then either (it would also come alive when they turn on).
     it('refuses a grant while contacts are off for the Agent owner', async () => {
@@ -481,14 +488,14 @@ describe('agentShareRouter', () => {
     // A workspace manager other than the owner must see and save the same
     // people the run accepts: the runtime keys the book by the Agent owner.
     it('keys the address book by the Agent owner, not the calling manager', async () => {
-      const { ContactModel } = await import('@/database/models/contact');
+      const { getAddressBook } = await import('@/business/server/contact/addressBook');
       const caller = agentShareRouter.createCaller(await createContextInner({ userId: 'user-1' }));
       mockAgentOwnerRows.mockResolvedValue([{ userId: 'owner-9' }]);
       mockListAddressBookPeople.mockResolvedValue([]);
 
       await caller.listDeviceGrantablePeople({ agentId: 'agent-1' });
 
-      expect(ContactModel).toHaveBeenCalledWith(expect.anything(), 'owner-9', undefined);
+      expect(getAddressBook).toHaveBeenCalledWith(expect.anything(), 'owner-9', undefined);
       expect(mockGetFeatureFlagsState).toHaveBeenCalledWith('owner-9');
     });
 

@@ -8,12 +8,12 @@ import pMap from 'p-map';
 import { z } from 'zod';
 
 import { getAgentShareMonthlySpend } from '@/business/server/agent-share/spendGate';
+import { getAddressBook } from '@/business/server/contact/addressBook';
 import { withRbacPermission } from '@/business/server/trpc-middlewares/rbacPermission';
 import { wsCompatProcedure } from '@/business/server/trpc-middlewares/workspaceAuth';
 import { AgentModel } from '@/database/models/agent';
 import { AgentShareModel } from '@/database/models/agentShare';
 import { AgentShareProfileModel } from '@/database/models/agentShareProfile';
-import { ContactModel } from '@/database/models/contact';
 import { FileModel } from '@/database/models/file';
 import { RbacModel } from '@/database/models/rbac';
 import { TopicModel } from '@/database/models/topic';
@@ -75,7 +75,7 @@ export const agentShareConfigSchema = z
       .max(500)
       .refine((ids) => new Set(ids).size === ids.length, 'Duplicate declined identifier')
       .optional(),
-    deviceAccess: z.enum(['none', 'contacts', 'allowlist']).optional(),
+    deviceAccess: z.enum(['none', 'contacts', 'allowlist', 'everyone']).optional(),
     /** Each id must also be in the scope's address book; `updateShareConfig` checks that. */
     deviceAllowUserIds: z
       .array(z.string().trim().min(1).max(64))
@@ -87,6 +87,8 @@ export const agentShareConfigSchema = z
       .max(100)
       .refine((ids) => new Set(ids).size === ids.length, 'Duplicate featured Work')
       .optional(),
+    /** Lists the share in the shared-Agent market; see `AgentShareConfig.listedInMarket`. */
+    listedInMarket: z.boolean().optional(),
     /** Bytes; `0` is a real value (attachments off), so non-negative rather than positive. */
     maxFileStorage: z.number().int().nonnegative().optional(),
     maxMessagesPerVisitor: z.number().int().positive().optional(),
@@ -205,7 +207,7 @@ const shareAddressBook = async (ctx: AgentSharePermissionContext, agentId: strin
     .limit(1);
   const ownerId = agent?.userId ?? ctx.userId;
   return {
-    book: new ContactModel(ctx.serverDB, ownerId, ctx.workspaceId),
+    book: getAddressBook(ctx.serverDB, ownerId, ctx.workspaceId),
     enabled: await isChannelEnabled(ownerId),
   };
 };
@@ -442,7 +444,7 @@ export const agentShareRouter = router({
 
   /**
    * Who the execution-environment grant can name: the address book of the
-   * share's scope (`ContactModel.listAddressBookPeople`). `unlisted` resolves
+   * share's scope (`AddressBook.listAddressBookPeople`). `unlisted` resolves
    * the profiles of already-granted people who have since left that book, so
    * the settings page can show them as no longer authorized instead of an id.
    * `enabled` is false while the address book itself is off for the caller
