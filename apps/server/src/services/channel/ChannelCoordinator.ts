@@ -1,3 +1,4 @@
+import { A2uiIdentifier } from '@lobechat/builtin-tool-a2ui';
 import { ChannelIdentifier } from '@lobechat/builtin-tool-channel';
 import { SHARE_VISITOR_PROMPT_MAX_LENGTH } from '@lobechat/const';
 import type { LobeChatDatabase } from '@lobechat/database';
@@ -38,11 +39,13 @@ import { ChannelRoutingService } from './ChannelRoutingService';
 import { announceDeviceGrants } from './deviceGrantCard';
 import { notifyChannelMentions } from './mention';
 import { notifyChannel } from './notify';
+import { type PickedOfflineDevice, wakePickedDevices } from './pickedDeviceWake';
 import { registerLocalChannelAdvance, wakeChannel } from './queue';
 import { deliverRelayReceipt } from './relayReceipt';
 import { reportChannelReplyFailure } from './replyError';
 import { openChannelReply } from './replyOpening';
 import { createRoutedDevicePresence, resolveChannelRoutedDevice } from './routedDevice';
+import { runSurfaces } from './runSurfaces';
 import { createChannelWorktree } from './worktree';
 
 const LEASE_MS = 60_000;
@@ -244,6 +247,8 @@ export class ChannelCoordinator {
       .flat()
       .filter((device) => device.online)
       .map((device) => device.deviceId);
+    // Devices picked in the Channel that a claim found offline; a sleeping cloud one is woken.
+    const pickedOffline: PickedOfflineDevice[] = [];
 
     try {
       await pMap(
@@ -276,6 +281,9 @@ export class ChannelCoordinator {
                   accessDenied = true;
                 },
                 onlineDeviceIds,
+                onPickedDeviceOffline: (device) => {
+                  pickedOffline.push(device);
+                },
                 routedDevice: (run) => resolveChannelRoutedDevice(this.db, run, routedPresence),
                 serverDefaultAgentConfig: getServerDefaultAgentConfig(),
               });
@@ -297,6 +305,13 @@ export class ChannelCoordinator {
     } finally {
       if (pending.length) await notifyChannel(this.db, channelId);
     }
+    if (pickedOffline.length)
+      await wakePickedDevices(this.db, {
+        channelId,
+        devices: pickedOffline,
+        onlineDeviceIds,
+        workspaceId: channel.workspaceId,
+      });
     // A claim that found the device made private since it was picked files a request, and so does
     // one whose requester may not use the Agent; ask their owners now.
     if (pending.length) {
@@ -439,7 +454,8 @@ export class ChannelCoordinator {
       if (!(await this.executions.heartbeat(job.id, lease)))
         throw new Error('The Channel dispatch lease expired before submission');
       const result = await this.service(topic.userId, workspaceId, !!share).execAgent({
-        additionalPluginIds: [ChannelIdentifier],
+        // A reply may answer with a card; its surfaces publish with the reply's text.
+        additionalPluginIds: [ChannelIdentifier, A2uiIdentifier],
         agentId: member.agentId,
         agentConfigSnapshot: config,
         // No device picked in the Channel: the requester's own device for this Agent applies.
@@ -535,22 +551,34 @@ export class ChannelCoordinator {
         return;
       }
       let reply = job.draft;
+      const messages =
+        operation.userId && job.topicId
+          ? new MessageModel(
+              this.db,
+              operation.userId,
+              operation.workspaceId ?? undefined,
+              undefined,
+              job.executionConfig?.share ? { includeShareVisitor: true } : undefined,
+            )
+          : undefined;
+      // Cards the run drew. Read on every attempt, so a publish retried after a crash keeps them.
+      const surfaces =
+        messages && job.topicId ? await runSurfaces(messages, operationId, job.topicId) : [];
       if (job.draft === null) {
-        if (!operation.userId || !job.topicId) return;
-        const final = await new MessageModel(
-          this.db,
-          operation.userId,
-          operation.workspaceId ?? undefined,
-          undefined,
-          job.executionConfig?.share ? { includeShareVisitor: true } : undefined,
-        ).findLatestAssistantByOperationId({ operationId, topicId: job.topicId });
+        if (!messages || !job.topicId) return;
+        const final = await messages.findLatestAssistantByOperationId({
+          operationId,
+          topicId: job.topicId,
+        });
         const content = final?.tools?.length ? undefined : extractTextFromMessage(final);
         // A wake nobody asked for may end in silence. Settled like a reply, not a failure.
         // A run that stopped on a tool call (out of steps) did not choose silence: it failed.
         // A run that asked its requester something always posts the questions, whatever it
-        // wrote around them: a card nobody sees cannot be answered.
+        // wrote around them: a card nobody sees cannot be answered. A card it drew is posted
+        // the same way, even with no words after it.
+        const carded = !!job.ask || surfaces.length > 0;
         const silence =
-          final?.tools?.length || job.ask
+          final?.tools?.length || carded
             ? undefined
             : detectNoReply({ content, wakeKind: job.wake?.kind });
         if (silence && (await this.executions.silence(channelId, jobId, silence.reason))) {
@@ -558,8 +586,8 @@ export class ChannelCoordinator {
           await notifyChannel(this.db, channelId);
           return;
         }
-        const text = job.ask && detectNoReply({ content, wakeKind: 'followup' }) ? '' : content;
-        if (!text?.trim() && !job.ask) {
+        const text = carded && detectNoReply({ content, wakeKind: 'followup' }) ? '' : content;
+        if (!text?.trim() && !carded) {
           await this.stopWriters([job]);
           await notifyChannel(this.db, channelId);
           return;
@@ -568,7 +596,7 @@ export class ChannelCoordinator {
         await this.executions.saveDraft(channelId, jobId, text ?? '');
         reply = text ?? '';
       }
-      const replyMessageId = await this.executions.publish(channelId, jobId);
+      const replyMessageId = await this.executions.publish(channelId, jobId, surfaces);
       await this.stopWriters([job]);
       // `@Name` in the reply addresses people and Agents like a person's mention does.
       const mentioned = await this.executions

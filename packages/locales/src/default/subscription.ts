@@ -599,6 +599,9 @@ export default {
   'plans.compare.rolling5hSpend': '5-hour limit',
   'plans.compare.rolling7dSpend': 'Weekly limit',
   'plans.compare.sandboxStorage': 'Cloud sandbox storage',
+  'plans.compare.trialCredit': 'Trial credits',
+  'plans.compare.trialCredit.desc': 'Granted once',
+  'plans.compare.trialCredit.runs': 'About {{runs}} agent tasks',
   'plans.compare.ultraWeeklySpend': 'Ultra model weekly limit',
   'plans.compare.ultraWeeklySpend.desc': 'Counts toward the weekly limit and has its own limit',
   'plans.compare.unlimited': 'Unlimited',
@@ -627,9 +630,10 @@ export default {
   'plans.legacy.banner.canceledDesc':
     'Your subscription is canceled and ends with this billing period. You can upgrade to a current plan anytime to keep going.',
   'plans.legacy.banner.desc':
-    'It keeps its current price. You can upgrade to a higher-tier plan anytime, and what you have used this billing period is on us.',
+    'It keeps its current price. You can upgrade to a higher-tier plan anytime: the confirmation compares your current and new quotas side by side, and what you have used this billing period is on us.',
   'plans.legacy.banner.downgrade': 'Switches to {{plan}} when this billing period ends',
   'plans.legacy.banner.title': 'You are on {{plan}}, a legacy plan',
+  'plans.legacy.banner.viewBenefits': 'View current benefits',
   'plans.legacy.upgradeOnly': 'A legacy plan can only be upgraded to a higher-tier plan',
   'plans.limits.agentMemory.unavailable': 'Agent memory',
   'plans.limits.agentMemory.unlimited': 'Agent memory',
@@ -804,7 +808,7 @@ export default {
   'plansModal.default.desc': 'Unlock more capacity and advanced features.',
   'plansModal.default.title': 'Upgrade your plan',
   'plansModal.fileStorageLimit.desc':
-    'Your file storage is full. Upgrade to keep uploading, or delete unused files on the <1>Resources page</1> to free up space.',
+    'Your file storage is full. Upgrade to keep uploading, or delete unused files on the <1>Library page</1> to free up space.',
   'plansModal.fileStorageLimit.title': 'Storage limit reached',
   'plansModal.messengerWechat.desc':
     'The WeChat System Bot is available on paid personal plans. Upgrade to connect and use it.',
@@ -825,7 +829,7 @@ export default {
     'Vector storage is not equal to the original size of your uploaded or imported dataset, but is calculated based on the vectorization of pure text content in your files. For example, a 1-page PDF file (1000-1500 characters) may only take up about 1 vector storage entry when extracted and vectorized into pure text. You can view your usage under "{{usage}}".',
   'qa.list.embeddings.q': 'How is vector storage calculated?',
   'qa.list.free.limit.newA':
-    '{{name}} has always adhered to open source principles. For professional developers, you can use all open source capabilities through self-deployment of the community version. In {{cloud}}, every registered user gets a free monthly usage limit, ready to use without complex configuration. For more usage, subscribe to {{plus}}, {{pro}} or {{max}}.',
+    '{{name}} has always adhered to open source principles. For professional developers, you can use all open source capabilities through self-deployment of the community version. In {{cloud}}, every registered user gets one-time free usage, ready to use without complex configuration. For more usage, subscribe to {{plus}}, {{pro}} or {{max}}.',
   'qa.list.free.q': 'Can {{name}} be used for free?',
   'qa.list.limit.newA.balance':
     'Keep going with your balance: top up on the <fundsLink>{{funds}}</fundsLink> page, then turn on "{{overflow}}".',
@@ -1033,7 +1037,7 @@ export default {
   'usage.window.rule.plan5h': '5-hour limit',
   'usage.window.rule.plan7d': 'Weekly limit',
   'usage.window.rule.agentRunMonth': 'Monthly agent task limit',
-  'usage.window.rule.freeMonth': 'Free monthly limit',
+  'usage.window.rule.freeMonth': 'Free credits',
   'usage.window.rule.planMonth': 'Monthly limit',
   'creditUsageReminder.exhausted': "This billing cycle's subscription usage has run out",
   'creditUsageReminder.window.exhausted': '{{rule}} reached',
@@ -1059,7 +1063,7 @@ export default {
   'balance.subscriptionQuotaDesc': 'Subscription usage is spent first, then your balance',
   'cancelPlan.failed': "Couldn't cancel the subscription. Check your connection and try again.",
   'compare.monthlyQuota': 'Monthly usage',
-  'plans.quota.freeLimit': 'Monthly limit, resets every month',
+  'plans.quota.freeLimit': 'One-time trial credits',
   'plans.quota.none': 'No built-in usage',
   'plans.quota.title': 'Usage',
   'creditUsageReminder.used': "{{percent}} of this billing cycle's subscription usage is used",
@@ -1180,6 +1184,8 @@ export default {
   'credits.modelPolicy.tiers.desc': 'Each tier includes every model of the tiers below it.',
   'credits.modelPolicy.tiers.empty': 'No models in this tier yet',
   'credits.modelPolicy.tiers.included': 'Included models',
+  'credits.modelPolicy.tiers.showAll': 'Show all · {{count}} more',
+  'credits.modelPolicy.tiers.showLess': 'Show less',
   'credits.modelPolicy.tiers.title': 'Models by tier',
   'credits.modelPolicy.tiers.unavailable': 'Not available',
 };

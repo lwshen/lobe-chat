@@ -127,6 +127,7 @@ export default {
   'copyThreadLink': 'Copy link',
   'copyThreadLinkSuccess': 'Thread link copied',
   'ask.answeredBy': 'Answered by {{name}}',
+  'ask.closed': 'Closed: answered in the conversation, or the time to answer ran out',
   'ask.failed': "Couldn't send your answer. Try again.",
   'ask.multiSelect': 'Choose all that apply',
   'ask.other': 'Other',
@@ -134,6 +135,11 @@ export default {
   'ask.submit': 'Send answer',
   'ask.waitingFor': 'Waiting for {{name}} to answer',
   'actionFailed': 'Something went wrong. Try again.',
+  'a2uiAction.empty': '—',
+  'a2uiAction.no': 'No',
+  'a2uiAction.submitted': 'Submitted',
+  'a2uiAction.submittedTitle': 'Submitted “{{title}}”',
+  'a2uiAction.yes': 'Yes',
   'send': 'Send',
   'sendFailed': 'Message was not sent. Your draft is preserved; try again.',
   'shareVisitorReadOnlyNotice':
@@ -157,6 +163,8 @@ export default {
   'threadCard.messages_other': '{{count}} messages',
   'closeThread': 'Close thread',
   'thread': 'Thread',
+  'collapseThreads': 'Collapse threads',
+  'expandThreads': 'Expand threads',
   /** Heads the Channel's own actions in a menu that also holds a thread's. */
   'channel': 'Channel',
   'threadDivider': 'Replies in this thread',
